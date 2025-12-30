@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AA 账单分摊（人天）+ 真协作</title>
+  <style>
+    :root{
+      /* Light theme */
+      --bg:#f6f7ff;
+      --card:#ffffff;
+      --text:#12162a;
+      --muted:#5b6b96;
+      --line:rgba(18,22,42,.10);
+      --pri:#4b6bff;
+      --pri2:#a24bff;
+      --good:#0a9b4a;
+      --bad:#d81b60;
+      --shadow: 0 12px 28px rgba(18,22,42,.12);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC","Microsoft YaHei", Arial;
+      color:var(--text);
+      background:
+        radial-gradient(1100px 700px at 15% 0%, rgba(75,107,255,.18), transparent 60%),
+        radial-gradient(900px 650px at 95% 10%, rgba(162,75,255,.14), transparent 60%),
+        linear-gradient(180deg, rgba(255,255,255,.75), rgba(246,247,255,1)),
+        var(--bg);
+    }
+    .wrap{max-width:1100px; margin:0 auto; padding:14px 14px 96px}
+    header{
+      position:sticky; top:0; z-index:10;
+      background:rgba(255,255,255,.80);
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--line);
+    }
+    .top{
+      max-width:1100px; margin:0 auto; padding:12px 14px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+    }
+    .title{font-weight:900; letter-spacing:.2px}
+    .sub{font-size:12px; color:var(--muted); margin-top:4px}
+    .rightTop{
+      display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end;
+    }
+    .badge{
+      font-size:11px; color:var(--muted);
+      padding:6px 10px; border-radius:999px;
+      border:1px solid var(--line); background:rgba(255,255,255,.75);
+      white-space:nowrap;
+    }
+
+    .grid{display:grid; gap:12px}
+    @media(min-width:980px){ .grid{grid-template-columns: 360px 1fr;} }
+
+    .card{
+      background: var(--card);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:12px;
+      box-shadow: var(--shadow);
+    }
+    h2{margin:0 0 10px; font-size:14px; color:#1b2140}
+    .muted{color:var(--muted)}
+    .small{font-size:12px}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+    .hr{height:1px; background:var(--line); margin:12px 0}
+
+    table{width:100%; border-collapse:collapse; overflow:hidden; border-radius:14px}
+    th, td{padding:10px 10px; border-bottom:1px solid var(--line); font-size:12px; text-align:left; vertical-align:top}
+    th{color:#1b2140; background: rgba(75,107,255,.06)}
+    .right{text-align:right}
+    .ok{color:var(--good); font-weight:900}
+    .no{color:var(--bad); font-weight:900}
+
+    .pills{display:flex; flex-wrap:wrap; gap:8px}
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px; border-radius:999px;
+      border:1px solid var(--line);
+      background:rgba(75,107,255,.05);
+      font-size:12px;
+    }
+    .pill b{font-weight:900}
+    .pill .x{cursor:pointer; opacity:.75}
+    .pill .x:hover{opacity:1}
+
+    button{
+      border:none; cursor:pointer; color:white;
+      border-radius:14px; padding:10px 12px;
+      background: linear-gradient(90deg, rgba(75,107,255,.95), rgba(162,75,255,.92));
+      font-weight:900;
+      box-shadow: 0 8px 18px rgba(75,107,255,.18);
+    }
+    button.secondary{
+      color:var(--text);
+      background: rgba(255,255,255,.90);
+      border:1px solid var(--line);
+      font-weight:800;
+      box-shadow:none;
+    }
+    button.danger{
+      color:var(--bad);
+      background: rgba(216,27,96,.08);
+      border:1px solid rgba(216,27,96,.25);
+      font-weight:900;
+      box-shadow:none;
+    }
+    button.ghost{
+      color:var(--text);
+      background: transparent;
+      border:1px solid var(--line);
+      font-weight:800;
+      box-shadow:none;
+    }
+
+    .bottomBar{
+      position:fixed; left:0; right:0; bottom:0; z-index:20;
+      background:rgba(255,255,255,.86);
+      backdrop-filter: blur(10px);
+      border-top:1px solid var(--line);
+    }
+    .bottomInner{
+      max-width:1100px; margin:0 auto;
+      padding:10px 12px;
+      display:flex; gap:10px;
+    }
+    .bottomInner button{flex:1; padding:12px 10px}
+
+    /* Modal (CENTER now) */
+    .modalMask{
+      position:fixed; inset:0; z-index:30;
+      background: rgba(18,22,42,.35);
+      display:none; align-items:center; justify-content:center;
+      padding:14px;
+    }
+    .modal{
+      width:min(720px, 100%);
+      max-height: 86vh;
+      overflow:auto;
+      background: rgba(255,255,255,.92);
+      border:1px solid var(--line);
+      border-radius:18px;
+      box-shadow: 0 24px 60px rgba(18,22,42,.22);
+    }
+    .modalHeader{
+      padding:12px 12px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      border-bottom:1px solid var(--line);
+      position:sticky; top:0;
+      background: rgba(255,255,255,.95);
+      backdrop-filter: blur(8px);
+    }
+    .modalTitle{font-weight:950}
+    .modalBody{padding:12px}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    label{font-size:12px; color:var(--muted)}
+    input, select, textarea{
+      border-radius:14px; border:1px solid var(--line);
+      background: rgba(255,255,255,.98);
+      color:var(--text);
+      padding:11px 10px;
+      outline:none;
+      width:100%;
+    }
+    input[type="date"]{max-width:240px}
+    input[type="number"]{max-width:240px}
+    .col2{display:grid; gap:10px}
+    @media(min-width:640px){ .col2{grid-template-columns:1fr 1fr;} }
+
+    .checkList{
+      display:grid; grid-template-columns:1fr; gap:8px;
+      margin-top:8px;
+    }
+    @media(min-width:640px){ .checkList{grid-template-columns:1fr 1fr;} }
+    .checkItem{
+      display:flex; align-items:center; gap:10px;
+      padding:10px; border-radius:14px;
+      border:1px solid var(--line);
+      background: rgba(75,107,255,.05);
+    }
+    .checkItem input{width:auto}
+    .hint{font-size:12px; color:var(--muted); line-height:1.6}
+
+    .toast{
+      position:fixed; left:50%; transform:translateX(-50%);
+      bottom:86px; z-index:50;
+      background:rgba(18,22,42,.88);
+      color:white;
+      border:1px solid rgba(255,255,255,.18);
+      padding:10px 12px;
+      border-radius:999px;
+      display:none;
+      font-size:12px;
+    }
+    .kbd{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      font-size:12px;
+      padding:2px 8px;
+      border-radius:999px;
+      background: rgba(18,22,42,.06);
+      border:1px solid var(--line);
+    }
+  </style>
+</head>
+
+<body>
+<header>
+  <div class="top">
+    <div>
+      <div class="title">AA 账单分摊（人天）+ 真协作</div>
+      <div class="sub">GitHub Pages 部署 · Firebase 实时同步 · 多人一起改同一本账</div>
+    </div>
+
+    <div class="rightTop">
+      <div class="badge" id="syncBadge">离线：仅本机保存</div>
+      <button class="secondary" onclick="openModal('share')">协作 / 分享</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+
+    <div class="card">
+      <h2>人员</h2>
+      <div class="pills" id="peoplePills"></div>
+      <div class="hr"></div>
+
+      <h2>工具</h2>
+      <div class="row">
+        <button class="secondary" onclick="openModal('person')">添加人员</button>
+        <button class="secondary" onclick="openModal('bill')">添加账单</button>
+        <button class="secondary" onclick="exportJSON()">导出</button>
+      </div>
+
+      <div class="hr"></div>
+
+      <h2>说明</h2>
+      <div class="hint">
+        - 分摊方式：按「人天」= 参与天数 × 人数比例分摊（精确到分）<br/>
+        - 结算方式：按净额（实付-应付）自动抵消，给出尽量少的转账清单<br/>
+        - 真协作：进入同一个 <span class="kbd">room</span>（房间号）即可实时同步
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>账单列表</h2>
+      <div id="billsContainer"></div>
+
+      <div class="hr"></div>
+
+      <h2>每人汇总（应付/实付/净额）</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>人员</th>
+            <th class="right">应付</th>
+            <th class="right">实付</th>
+            <th class="right">净额</th>
+          </tr>
+        </thead>
+        <tbody id="summaryBody"></tbody>
+      </table>
+
+      <div class="hr"></div>
+
+      <h2>最终结算（抵消后最少转账）</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>谁付给谁</th>
+            <th class="right">金额</th>
+          </tr>
+        </thead>
+        <tbody id="settleBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- Bottom Bar -->
+<div class="bottomBar">
+  <div class="bottomInner">
+    <button onclick="openModal('person')">+ 人</button>
+    <button onclick="openModal('bill')">+ 账</button>
+    <button class="secondary" onclick="openModal('share')">协作</button>
+    <button class="secondary" onclick="exportJSON()">导出</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Modal: Add Person -->
+<div class="modalMask" id="modalPerson">
+  <div class="modal">
+    <div class="modalHeader">
+      <div class="modalTitle">添加人员</div>
+      <button class="ghost" onclick="closeModal('person')">关闭</button>
+    </div>
+    <div class="modalBody">
+      <label>姓名</label>
+      <input id="personName" placeholder="例如：Sophie / KK / Tom" />
+      <div class="row" style="margin-top:12px">
+        <button onclick="addPerson()">添加</button>
+        <button class="secondary" onclick="closeModal('person')">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add Bill -->
+<div class="modalMask" id="modalBill">
+  <div class="modal">
+    <div class="modalHeader">
+      <div class="modalTitle">添加账单</div>
+      <button class="ghost" onclick="closeModal('bill')">关闭</button>
+    </div>
+    <div class="modalBody">
+      <div class="col2">
+        <div>
+          <label>账单名称</label>
+          <input id="billTitle" placeholder="例如：房租 / 水电 / 网费" />
+        </div>
+        <div>
+          <label>金额（总额）</label>
+          <input id="billAmount" type="number" min="0" step="0.01" placeholder="例如：1200" />
+        </div>
+        <div>
+          <label>开始日期</label>
+          <input id="billStart" type="date" />
+        </div>
+        <div>
+          <label>结束日期（含当日）</label>
+          <input id="billEnd" type="date" />
+        </div>
+        <div>
+          <label>付款人（谁垫付）</label>
+          <select id="billPayer"></select>
+        </div>
+        <div>
+          <label>账单天数（自动）</label>
+          <input id="billDays" disabled />
+        </div>
+      </div>
+
+      <div style="margin-top:10px">
+        <label>参与人（手机勾选）</label>
+        <div class="checkList" id="billParticipantsChecks"></div>
+        <div class="hint" style="margin-top:8px">
+          创建后默认每个参与人参与天数=账单天数；如果有人只参与部分天数，可在账单卡片里改。
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <button onclick="createBill()">创建</button>
+        <button class="secondary" onclick="closeModal('bill')">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Share / Collaboration -->
+<div class="modalMask" id="modalShare">
+  <div class="modal">
+    <div class="modalHeader">
+      <div class="modalTitle">协作 / 分享（实时同步）</div>
+      <button class="ghost" onclick="closeModal('share')">关闭</button>
+    </div>
+    <div class="modalBody">
+      <div class="card" style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(75,107,255,.04)">
+        <div style="font-weight:950">真协作（Firestore 实时同步）</div>
+        <div class="hint" style="margin-top:6px">
+          - 进入同一个房间号 <span class="kbd">room</span> 就会实时同步<br/>
+          - 你部署在 GitHub Pages，数据存在 Firebase Firestore（免费额度够小团队算账） :contentReference[oaicite:0]{index=0}
+        </div>
+        <div class="hr"></div>
+
+        <div class="col2">
+          <div>
+            <label>当前房间号</label>
+            <input id="roomIdBox" placeholder="未加入（离线）" readonly />
+          </div>
+          <div>
+            <label>邀请链接（发给别人）</label>
+            <input id="inviteLinkBox" placeholder="加入房间后自动生成" readonly />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <button onclick="createNewRoom()">创建新房间</button>
+          <button class="secondary" onclick="copyInviteLink()">复制邀请链接</button>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="col2">
+          <div>
+            <label>加入已有房间（输入 room）</label>
+            <input id="joinRoomInput" placeholder="例如：b7k2p9xq" />
+          </div>
+          <div class="row" style="align-items:flex-end">
+            <button class="secondary" onclick="joinRoom()">加入房间</button>
+          </div>
+        </div>
+
+        <div class="hint" style="margin-top:10px">
+          小提示：多人同时改同一个字段时按“最后写入”覆盖。为了避免互相覆盖，建议约定：一次只让一个人集中录入几笔账。
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div>
+        <div style="font-weight:950">备份 / 导入（可选）</div>
+        <div class="hint">如果你想把数据完整备份成文本，或需要手动迁移。</div>
+        <div style="margin-top:10px">
+          <label>导出 / 导入 JSON</label>
+          <textarea id="jsonBox" rows="8" placeholder="点“导出”生成；或粘贴 JSON 点“导入”"></textarea>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="secondary" onclick="exportJSONToBox()">导出到文本框</button>
+          <button class="secondary" onclick="importJSONFromBox()">从文本框导入</button>
+          <button class="danger" onclick="clearAll()">清空全部</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  // ============================================================
+  // Firebase 真协作：GitHub Pages + Firestore + Anonymous Auth
+  // - CDN module import 官方推荐方式见 alt-setup 文档 :contentReference[oaicite:1]{index=1}
+  // - 匿名登录用于让 Firestore rules 保护数据 :contentReference[oaicite:2]{index=2}
+  // ============================================================
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js';
+  import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js';
+  import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js';
+
+  // ====== 1) 把你的 Firebase config 粘贴到这里（Firebase Console -> Project settings -> Web app） :contentReference[oaicite:3]{index=3}
+const firebaseConfig = {
+  apiKey: "AIzaSyDhLRcOhh1eTIGHZ8aSZdBZmPH9PuB_P4k",
+  authDomain: "friendtrip-4ead0.firebaseapp.com",
+  projectId: "friendtrip-4ead0",
+  storageBucket: "friendtrip-4ead0.firebasestorage.app",
+  messagingSenderId: "342171915268",
+  appId: "1:342171915268:web:98c7133b35bc20c6171151",
+  measurementId: "G-8NX6SFYXV8"
+};
+
+  // ===== Helpers =====
+  const STORAGE_KEY = "aa_split_state_v4_realtime";
+  const $ = (id)=>document.getElementById(id);
+
+  function toast(msg){
+    const t = $("toast");
+    t.textContent = msg;
+    t.style.display = "block";
+    setTimeout(()=>t.style.display="none", 1700);
+  }
+  function escapeHtml(str){
+    return String(str)
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+  function daysInclusive(startStr, endStr){
+    if(!startStr || !endStr) return 0;
+    const s = new Date(startStr + "T00:00:00");
+    const e = new Date(endStr + "T00:00:00");
+    const diff = Math.round((e - s) / (1000*60*60*24));
+    return diff >= 0 ? diff + 1 : 0;
+  }
+  function toCents(x){
+    const n = Number(x);
+    if(!isFinite(n)) return 0;
+    return Math.round(n * 100);
+  }
+  function centsToMoney(c){
+    const sign = c < 0 ? "-" : "";
+    c = Math.abs(c);
+    const dollars = Math.floor(c / 100);
+    const cents = String(c % 100).padStart(2, "0");
+    return `${sign}${dollars}.${cents}`;
+  }
+  function uid(){
+    return Math.random().toString(16).slice(2) + Date.now().toString(16);
+  }
+  function roomIdRandom(){
+    // 8 chars, URL-friendly
+    const chars = "abcdefghjkmnpqrstuvwxyz23456789";
+    let out = "";
+    for(let i=0;i<8;i++) out += chars[Math.floor(Math.random()*chars.length)];
+    return out;
+  }
+  function getRoomFromUrl(){
+    const u = new URL(location.href);
+    return u.searchParams.get("room") || "";
+  }
+  function setRoomToUrl(room){
+    const u = new URL(location.href);
+    u.searchParams.set("room", room);
+    history.replaceState(null, "", u.toString());
+  }
+  function inviteLink(room){
+    const u = new URL(location.href);
+    u.searchParams.set("room", room);
+    u.hash = "";
+    return u.toString();
+  }
+
+  // ===== State =====
+  let state = { people: [], bills: [] };
+  function loadLocal(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        const obj = JSON.parse(raw);
+        if(obj && Array.isArray(obj.people) && Array.isArray(obj.bills)) state = obj;
+      }
+    }catch(e){}
+  }
+  function saveLocal(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  // ===== Modal Control =====
+  function openModal(which){
+    if(which==="person") $("modalPerson").style.display="flex";
+    if(which==="bill"){
+      if(state.people.length===0){
+        toast("先添加至少 1 个人");
+        openModal("person");
+        return;
+      }
+      seedBillForm();
+      $("modalBill").style.display="flex";
+    }
+    if(which==="share"){
+      refreshCollabUI();
+      $("modalShare").style.display="flex";
+    }
+  }
+  function closeModal(which){
+    if(which==="person") $("modalPerson").style.display="none";
+    if(which==="bill") $("modalBill").style.display="none";
+    if(which==="share") $("modalShare").style.display="none";
+  }
+
+  // expose for inline onclick
+  window.openModal = openModal;
+  window.closeModal = closeModal;
+
+  // ===== People =====
+  function addPerson(){
+    const name = $("personName").value.trim();
+    if(!name) return;
+    if(state.people.includes(name)){ toast("该人员已存在"); return; }
+    state.people.push(name);
+    $("personName").value="";
+    touchAndRender("已添加人员");
+    closeModal("person");
+  }
+  window.addPerson = addPerson;
+
+  function renderPeople(){
+    const box = $("peoplePills");
+    box.innerHTML="";
+    if(state.people.length===0){
+      box.innerHTML = `<div class="hint">还没有人员，点底部“+人”添加。</div>`;
+      return;
+    }
+    state.people.forEach(p=>{
+      const el = document.createElement("span");
+      el.className="pill";
+      el.innerHTML = `<b>${escapeHtml(p)}</b><span class="muted">人员</span><span class="x">✕</span>`;
+      el.querySelector(".x").addEventListener("click", ()=>{
+        state.people = state.people.filter(x=>x!==p);
+        state.bills.forEach(b=>{
+          b.participants = (b.participants||[]).filter(pp=>pp.name!==p);
+          if(b.payer===p) b.payer="";
+        });
+        touchAndRender("已删除人员");
+      });
+      box.appendChild(el);
+    });
+  }
+
+  // ===== Bill Form =====
+  function seedBillForm(){
+    const today = new Date();
+    const pad = (n)=> String(n).padStart(2,"0");
+    const d = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+    if(!$("billStart").value) $("billStart").value = d;
+    if(!$("billEnd").value) $("billEnd").value = d;
+
+    const payer = $("billPayer");
+    payer.innerHTML = "";
+    state.people.forEach(p=>{
+      const opt=document.createElement("option");
+      opt.value=p; opt.textContent=p;
+      payer.appendChild(opt);
+    });
+
+    const checks = $("billParticipantsChecks");
+    checks.innerHTML="";
+    state.people.forEach(p=>{
+      const div=document.createElement("label");
+      div.className="checkItem";
+      div.innerHTML = `<input type="checkbox" value="${escapeHtml(p)}" checked /> <span style="font-weight:900">${escapeHtml(p)}</span>`;
+      checks.appendChild(div);
+    });
+
+    function updateDays(){
+      const dd = daysInclusive($("billStart").value, $("billEnd").value);
+      $("billDays").value = dd ? `${dd} 天` : "";
+    }
+    $("billStart").onchange = updateDays;
+    $("billEnd").onchange = updateDays;
+    updateDays();
+  }
+
+  function createBill(){
+    const title = $("billTitle").value.trim();
+    const amount = Number($("billAmount").value);
+    const start = $("billStart").value;
+    const end = $("billEnd").value;
+    const payer = $("billPayer").value;
+
+    const billDays = daysInclusive(start, end);
+    const selected = [...$("billParticipantsChecks").querySelectorAll("input[type=checkbox]:checked")].map(x=>x.value);
+
+    if(!title){ toast("请填账单名称"); return; }
+    if(!(amount>=0)){ toast("请填正确金额"); return; }
+    if(!start || !end || billDays<=0){ toast("日期范围不对"); return; }
+    if(!payer){ toast("请选择付款人"); return; }
+    if(selected.length===0){ toast("至少选择 1 个参与人"); return; }
+
+    const participants = selected.map(name => ({ name, days: billDays }));
+    state.bills.unshift({ id: uid(), title, amount, start, end, payer, participants });
+
+    $("billTitle").value=""; $("billAmount").value="";
+    touchAndRender("已创建账单");
+    closeModal("bill");
+  }
+  window.createBill = createBill;
+
+  // ===== Allocation (cents) with largest remainder =====
+  function computeAllocCents(bill){
+    const amountC = toCents(bill.amount);
+    const ps = bill.participants || [];
+    const totalPersonDays = ps.reduce((s,p)=> s + (Number(p.days)||0), 0);
+
+    if(amountC <= 0 || totalPersonDays <= 0 || ps.length === 0){
+      return { amountC, totalPersonDays, alloc: ps.map(p=>({name:p.name, days:Number(p.days)||0, shareC:0})) };
+    }
+
+    const items = ps.map((p, idx) => {
+      const d = Math.max(0, Math.floor(Number(p.days)||0));
+      const exact = amountC * (d / totalPersonDays);
+      const floorC = Math.floor(exact);
+      const rem = exact - floorC;
+      return { idx, name: p.name, days: d, floorC, rem };
+    });
+
+    let sumFloor = items.reduce((s,x)=> s + x.floorC, 0);
+    let remaining = amountC - sumFloor;
+    items.sort((a,b)=> b.rem - a.rem);
+    for(let i=0; i<items.length && remaining>0; i++){
+      items[i].floorC += 1;
+      remaining -= 1;
+    }
+    items.sort((a,b)=> a.idx - b.idx);
+
+    return { amountC, totalPersonDays, alloc: items.map(x=>({ name:x.name, days:x.days, shareC:x.floorC })) };
+  }
+
+  function computeTotals(){
+    const owed = new Map();
+    const paid = new Map();
+    state.people.forEach(p => { owed.set(p,0); paid.set(p,0); });
+
+    for(const b of state.bills){
+      const { amountC, alloc } = computeAllocCents(b);
+      if(b.payer) paid.set(b.payer, (paid.get(b.payer)||0) + amountC);
+      for(const a of alloc) owed.set(a.name, (owed.get(a.name)||0) + a.shareC);
+    }
+
+    const net = new Map();
+    const all = new Set([...owed.keys(), ...paid.keys()]);
+    for(const name of all) net.set(name, (paid.get(name)||0) - (owed.get(name)||0));
+    return { owed, paid, net };
+  }
+
+  function computeSettlement(netMap){
+    const creditors = [];
+    const debtors = [];
+    for(const [name, v] of netMap.entries()){
+      if(v > 0) creditors.push({ name, amt: v });
+      else if(v < 0) debtors.push({ name, amt: -v });
+    }
+    creditors.sort((a,b)=> b.amt - a.amt);
+    debtors.sort((a,b)=> b.amt - a.amt);
+
+    const transfers = [];
+    let i=0, j=0;
+    while(i<debtors.length && j<creditors.length){
+      const d = debtors[i], c = creditors[j];
+      const x = Math.min(d.amt, c.amt);
+      if(x>0){
+        transfers.push({ from:d.name, to:c.name, amountC:x });
+        d.amt -= x; c.amt -= x;
+      }
+      if(d.amt===0) i++;
+      if(c.amt===0) j++;
+    }
+    return transfers;
+  }
+
+  // ===== Render Bills =====
+  function renderBills(){
+    const box = $("billsContainer");
+    box.innerHTML = "";
+
+    if(state.bills.length===0){
+      box.innerHTML = `<div class="hint">还没有账单，点底部“+账”添加。</div>`;
+      return;
+    }
+
+    state.bills.forEach(b=>{
+      const billDays = daysInclusive(b.start, b.end);
+      const { amountC, totalPersonDays, alloc } = computeAllocCents(b);
+
+      const card = document.createElement("div");
+      card.className = "card";
+      card.style.marginBottom = "12px";
+
+      const payerOptions = state.people.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap">
+          <div>
+            <div style="font-weight:950">${escapeHtml(b.title || "未命名账单")}</div>
+            <div class="small muted" style="margin-top:4px">
+              金额：<span class="mono">$${centsToMoney(amountC)}</span> ·
+              日期：<span class="mono">${escapeHtml(b.start)}</span> ~ <span class="mono">${escapeHtml(b.end)}</span>（${billDays}天） ·
+              总人天：<span class="mono">${totalPersonDays}</span>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <span class="badge">付款人</span>
+              <select data-role="payer" style="min-width:160px">${payerOptions}</select>
+              <button class="secondary ghost" data-act="setAll">一键全程</button>
+            </div>
+          </div>
+          <div class="row">
+            <button class="secondary ghost" data-act="dup">复制</button>
+            <button class="danger" data-act="del">删除</button>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>参与人</th>
+              <th class="right">参与天数</th>
+              <th class="right">应付</th>
+            </tr>
+          </thead>
+          <tbody data-role="tb"></tbody>
+        </table>
+      `;
+
+      const payerSel = card.querySelector('[data-role="payer"]');
+      payerSel.value = b.payer || state.people[0] || "";
+      payerSel.addEventListener("change", ()=>{
+        b.payer = payerSel.value;
+        touchAndRender();
+      });
+
+      card.querySelector('[data-act="del"]').addEventListener("click", ()=>{
+        state.bills = state.bills.filter(x=>x.id!==b.id);
+        touchAndRender("已删除账单");
+      });
+      card.querySelector('[data-act="dup"]').addEventListener("click", ()=>{
+        const copy = JSON.parse(JSON.stringify(b));
+        copy.id = uid();
+        copy.title = (copy.title || "账单") + "（复制）";
+        state.bills.unshift(copy);
+        touchAndRender("已复制");
+      });
+      card.querySelector('[data-act="setAll"]').addEventListener("click", ()=>{
+        (b.participants||[]).forEach(pp=> pp.days = billDays);
+        touchAndRender("已设置全程");
+      });
+
+      const tb = card.querySelector('[data-role="tb"]');
+      (b.participants||[]).forEach((pp)=>{
+        const shareC = alloc.find(a=>a.name===pp.name)?.shareC ?? 0;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td style="font-weight:900">${escapeHtml(pp.name)}</td>
+          <td class="right">
+            <input type="number" min="0" step="1" value="${Math.max(0, Math.floor(Number(pp.days)||0))}"
+              style="width:110px; text-align:right; border-radius:12px" />
+            <div class="small muted">建议：${billDays}</div>
+          </td>
+          <td class="right mono">$${centsToMoney(shareC)}</td>
+        `;
+        const inp = tr.querySelector("input");
+        inp.addEventListener("input", ()=>{
+          pp.days = Math.max(0, Math.floor(Number(inp.value)||0));
+          touchAndRender();
+        });
+        tb.appendChild(tr);
+      });
+
+      box.appendChild(card);
+    });
+  }
+
+  function renderSummary(){
+    const { owed, paid, net } = computeTotals();
+    const names = Array.from(new Set([...state.people, ...net.keys()]));
+    const rows = names.map(name=>({
+      name,
+      owedC: owed.get(name)||0,
+      paidC: paid.get(name)||0,
+      netC: net.get(name)||0,
+    })).sort((a,b)=> b.netC - a.netC);
+
+    const body = $("summaryBody");
+    body.innerHTML="";
+    if(rows.length===0){
+      body.innerHTML = `<tr><td class="muted" colspan="4">暂无数据</td></tr>`;
+    }else{
+      rows.forEach(r=>{
+        const cls = r.netC>0 ? "ok" : (r.netC<0 ? "no" : "muted");
+        const tr=document.createElement("tr");
+        tr.innerHTML = `
+          <td style="font-weight:900">${escapeHtml(r.name)}</td>
+          <td class="right mono">$${centsToMoney(r.owedC)}</td>
+          <td class="right mono">$${centsToMoney(r.paidC)}</td>
+          <td class="right mono ${cls}">$${centsToMoney(r.netC)}</td>
+        `;
+        body.appendChild(tr);
+      });
+    }
+
+    const transfers = computeSettlement(net);
+    const sb = $("settleBody");
+    sb.innerHTML="";
+    if(transfers.length===0){
+      sb.innerHTML = `<tr><td class="muted" colspan="2">暂无需要转账（已经抵消或还没账单）</td></tr>`;
+    }else{
+      transfers.forEach(t=>{
+        const tr=document.createElement("tr");
+        tr.innerHTML = `
+          <td><b>${escapeHtml(t.from)}</b> → <b>${escapeHtml(t.to)}</b></td>
+          <td class="right mono">$${centsToMoney(t.amountC)}</td>
+        `;
+        sb.appendChild(tr);
+      });
+    }
+  }
+
+  function renderAll(){
+    renderPeople();
+    renderBills();
+    renderSummary();
+  }
+
+  // ===== JSON Backup =====
+  function exportJSONToBox(){
+    $("jsonBox").value = JSON.stringify(state, null, 2);
+    toast("已导出到文本框");
+  }
+  function importJSONFromBox(){
+    try{
+      const txt = $("jsonBox").value.trim();
+      if(!txt){ toast("请先粘贴 JSON"); return; }
+      const obj = JSON.parse(txt);
+      if(!obj || !Array.isArray(obj.people) || !Array.isArray(obj.bills)){
+        toast("JSON 结构不对"); return;
+      }
+      state.people = obj.people.map(String).filter(Boolean);
+      state.bills = obj.bills.map(b=>({
+        id: b.id || uid(),
+        title: String(b.title||"账单"),
+        amount: Number(b.amount)||0,
+        start: b.start||"",
+        end: b.end||"",
+        payer: String(b.payer||""),
+        participants: Array.isArray(b.participants) ? b.participants.map(p=>({
+          name: String(p.name||""),
+          days: Math.max(0, Math.floor(Number(p.days)||0))
+        })).filter(p=>p.name) : []
+      }));
+      touchAndRender("导入成功");
+    }catch(e){
+      toast("导入失败：" + e.message);
+    }
+  }
+  function exportJSON(){
+    openModal("share");
+    exportJSONToBox();
+  }
+  function clearAll(){
+    if(!confirm("确认清空全部人员和账单？")) return;
+    state = { people: [], bills: [] };
+    touchAndRender("已清空");
+  }
+  window.exportJSON = exportJSON;
+  window.exportJSONToBox = exportJSONToBox;
+  window.importJSONFromBox = importJSONFromBox;
+  window.clearAll = clearAll;
+
+  // ============================================================
+  // Real-time collaboration core
+  // ============================================================
+  let app = null, auth = null, db = null;
+  let clientId = localStorage.getItem("aa_client_id") || uid();
+  localStorage.setItem("aa_client_id", clientId);
+
+  let roomId = "";
+  let unsubRoom = null;
+
+  let localVersion = 0;        // increments on each local change
+  let lastRemoteVersion = 0;   // from firestore
+  let pushing = false;
+  let pushTimer = null;
+
+  function setSyncBadge(text){
+    $("syncBadge").textContent = text;
+  }
+
+  function refreshCollabUI(){
+    $("roomIdBox").value = roomId ? roomId : "";
+    $("inviteLinkBox").value = roomId ? inviteLink(roomId) : "";
+  }
+
+  async function ensureFirebase(){
+    if(app) return;
+    // Firebase web setup doc :contentReference[oaicite:4]{index=4}
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  }
+
+  async function connectRoom(room){
+    await ensureFirebase();
+
+    // Anonymous auth doc :contentReference[oaicite:5]{index=5}
+    // 登录一次即可（会缓存 session）
+    await signInAnonymously(auth);
+
+    // wait for auth state
+    await new Promise((resolve)=> {
+      const off = onAuthStateChanged(auth, (u)=>{
+        if(u){ off(); resolve(); }
+      });
+    });
+
+    roomId = room;
+    setRoomToUrl(roomId);
+    refreshCollabUI();
+    setSyncBadge(`协作中：room=${roomId}`);
+
+    if(unsubRoom) unsubRoom();
+
+    const roomRef = doc(db, "rooms", roomId);
+
+    // 1) 先推一次本地 state（如果远端是空的也能初始化）
+    await setDoc(roomRef, {
+      state,
+      version: localVersion,
+      updatedAt: serverTimestamp(),
+      updatedBy: clientId,
+    }, { merge:true });
+
+    // 2) 监听远端变更
+    unsubRoom = onSnapshot(roomRef, (snap)=>{
+      const data = snap.data();
+      if(!data) return;
+
+      const v = Number(data.version || 0);
+      const by = String(data.updatedBy || "");
+      if(!data.state) return;
+
+      // 忽略自己刚推的回显（减少抖动）
+      if(by === clientId) {
+        lastRemoteVersion = Math.max(lastRemoteVersion, v);
+        return;
+      }
+
+      // 只在远端版本更大时覆盖本地（Last-write-wins）
+      if(v > lastRemoteVersion && v >= localVersion){
+        lastRemoteVersion = v;
+        localVersion = v;
+        state = data.state;
+        saveLocal();
+        renderAll();
+        setSyncBadge(`已同步：room=${roomId}`);
+      }
+    });
+
+    toast("已进入协作房间（实时同步）");
+  }
+
+  function schedulePush(){
+    if(!roomId || !db) return;
+    if(pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(pushNow, 650);
+  }
+
+  async function pushNow(){
+    if(!roomId || !db) return;
+    if(pushing) return;
+    pushing = true;
+
+    try{
+      const roomRef = doc(db, "rooms", roomId);
+      await setDoc(roomRef, {
+        state,
+        version: localVersion,
+        updatedAt: serverTimestamp(),
+        updatedBy: clientId,
+      }, { merge:true });
+
+      setSyncBadge(`已同步：room=${roomId}`);
+    }catch(e){
+      console.error(e);
+      setSyncBadge("同步失败：检查 Firebase 配置/权限");
+      toast("同步失败：可能是 Firebase 配置或权限问题");
+    }finally{
+      pushing = false;
+    }
+  }
+
+  function touchAndRender(msg){
+    localVersion += 1;
+    saveLocal();
+    renderAll();
+    if(msg) toast(msg);
+    schedulePush();
+  }
+
+  // expose for UI
+  async function createNewRoom(){
+    const rid = roomIdRandom();
+    await connectRoom(rid);
+    refreshCollabUI();
+  }
+  async function joinRoom(){
+    const rid = $("joinRoomInput").value.trim();
+    if(!rid){ toast("请输入 room"); return; }
+    await connectRoom(rid);
+    $("joinRoomInput").value="";
+    refreshCollabUI();
+  }
+  async function copyInviteLink(){
+    if(!roomId){ toast("先创建/加入房间"); return; }
+    const link = inviteLink(roomId);
+    try{
+      await navigator.clipboard.writeText(link);
+      toast("已复制邀请链接");
+    }catch(e){
+      $("inviteLinkBox").focus();
+      $("inviteLinkBox").select();
+      toast("复制失败：请手动全选复制");
+    }
+  }
+  window.createNewRoom = createNewRoom;
+  window.joinRoom = joinRoom;
+  window.copyInviteLink = copyInviteLink;
+
+  // ===== Init =====
+  loadLocal();
+  renderAll();
+
+  // 如果 URL 带 room=xxx，则自动加入协作
+  const urlRoom = getRoomFromUrl();
+  if(urlRoom){
+    try{
+      await connectRoom(urlRoom);
+    }catch(e){
+      console.error(e);
+      setSyncBadge("协作连接失败：检查 Firebase 配置");
+      toast("协作连接失败：请检查 Firebase 配置/权限");
+    }
+  }else{
+    setSyncBadge("离线：仅本机保存（点“协作”创建 room）");
+  }
+  refreshCollabUI();
+</script>
+</body>
+</html>
