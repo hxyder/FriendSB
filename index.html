@@ -570,9 +570,18 @@ const firebaseConfig = {
     }
     if(which==="share"){
       refreshCollabUI();
+    
+      // ✅ 自动把链接里的 ?room=xxxx 填到输入框里
+      const urlRoom = getRoomFromUrl();
+      if (urlRoom) {
+        $("joinRoomInput").value = urlRoom;
+        // 更友好：直接让用户输入口令
+        setTimeout(() => $("joinPassInput")?.focus(), 0);
+      }
+    
       $("modalShare").style.display="flex";
     }
-  }
+
   function closeModal(which){
     if(which==="person") $("modalPerson").style.display="none";
     if(which==="bill") $("modalBill").style.display="none";
@@ -939,7 +948,7 @@ const firebaseConfig = {
   async function connectRoom(room, pass){
     if(!isSixDigits(pass)){
       toast("口令必须是 6 位数字");
-      return;
+      return false;
     }
     await ensureFirebase();
     await ensureAuth();
@@ -966,7 +975,7 @@ const firebaseConfig = {
         setSyncBadge("口令错误：无法加入该房间");
         refreshCollabUI();
         toast("口令错误：无法加入该房间");
-        return;
+        return false;
       }
 
       // 尝试解密并载入
@@ -982,7 +991,7 @@ const firebaseConfig = {
         setSyncBadge("解密失败：口令不对或数据损坏");
         refreshCollabUI();
         toast("解密失败：口令不对或数据损坏");
-        return;
+        return false;
       }
     }else{
       // 房间不存在：用当前本地 state 初始化（加密后写入）
@@ -1032,6 +1041,8 @@ const firebaseConfig = {
 
     toast("已进入协作房间（加密同步）");
     setSyncBadge(`已同步：room=${roomId}`);
+    return true;
+
   }
 
   function schedulePush(){
@@ -1092,10 +1103,15 @@ const firebaseConfig = {
     const pass = $("joinPassInput").value.trim();
     if(!rid){ toast("请输入 room"); return; }
     if(!isSixDigits(pass)){ toast("口令必须是 6 位数字"); return; }
-    await connectRoom(rid, pass);
-    $("joinRoomInput").value="";
-    $("joinPassInput").value="";
-    refreshCollabUI();
+  
+    const ok = await connectRoom(rid, pass);
+  
+    if (ok) {
+      $("joinRoomInput").value="";
+      $("joinPassInput").value="";
+      closeModal("share");
+      toast("进入成功");
+    }
   }
 
   async function copyInviteLink(){
@@ -1132,3 +1148,4 @@ const firebaseConfig = {
 </script>
 </body>
 </html>
+
