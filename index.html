@@ -3,12 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AA 账单分摊（人天）+ 真协作（口令加密）</title>
+  <title>AA 账单分摊（人天）· 真协作（6位口令加密）</title>
   <style>
     :root{
       --bg:#f6f7ff; --card:#ffffff; --text:#12162a; --muted:#5b6b96;
-      --line:rgba(18,22,42,.10); --pri:#4b6bff; --pri2:#a24bff;
-      --good:#0a9b4a; --bad:#d81b60; --shadow:0 12px 28px rgba(18,22,42,.12);
+      --line:rgba(18,22,42,.10);
+      --pri:#4b6bff; --pri2:#a24bff;
+      --good:#0a9b4a; --bad:#d81b60;
+      --shadow:0 12px 28px rgba(18,22,42,.12);
     }
     *{box-sizing:border-box}
     body{
@@ -21,7 +23,6 @@
         linear-gradient(180deg, rgba(255,255,255,.75), rgba(246,247,255,1)),
         var(--bg);
     }
-    .wrap{max-width:1100px; margin:0 auto; padding:14px 14px 96px}
     header{
       position:sticky; top:0; z-index:10;
       background:rgba(255,255,255,.80);
@@ -41,8 +42,11 @@
       border:1px solid var(--line); background:rgba(255,255,255,.75);
       white-space:nowrap;
     }
+
+    .wrap{max-width:1100px; margin:0 auto; padding:14px 14px 96px}
     .grid{display:grid; gap:12px}
     @media(min-width:980px){ .grid{grid-template-columns: 360px 1fr;} }
+
     .card{
       background:var(--card);
       border:1px solid var(--line);
@@ -55,12 +59,14 @@
     .small{font-size:12px}
     .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace}
     .hr{height:1px; background:var(--line); margin:12px 0}
+
     table{width:100%; border-collapse:collapse; overflow:hidden; border-radius:14px}
     th, td{padding:10px 10px; border-bottom:1px solid var(--line); font-size:12px; text-align:left; vertical-align:top}
     th{color:#1b2140; background: rgba(75,107,255,.06)}
     .right{text-align:right}
     .ok{color:var(--good); font-weight:900}
     .no{color:var(--bad); font-weight:900}
+
     .pills{display:flex; flex-wrap:wrap; gap:8px}
     .pill{
       display:inline-flex; align-items:center; gap:8px;
@@ -177,6 +183,10 @@
       border-radius:999px;
       display:none;
       font-size:12px;
+      max-width:min(92vw, 560px);
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
     }
     .kbd{
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
@@ -193,8 +203,8 @@
 <header>
   <div class="top">
     <div>
-      <div class="title">AA 账单分摊（人天）+ 真协作（口令加密）</div>
-      <div class="sub">GitHub Pages + Firebase Firestore · 6位口令加密 · 邀请链接只带 room</div>
+      <div class="title">AA 账单分摊（人天）· 真协作（6位口令加密）</div>
+      <div class="sub">GitHub Pages + Firebase Firestore · 邀请链接带 room · 口令你另发</div>
     </div>
     <div class="rightTop">
       <div class="badge" id="syncBadge">离线：仅本机保存</div>
@@ -205,10 +215,10 @@
 
 <div class="wrap">
   <div class="grid">
-
     <div class="card">
       <h2>人员</h2>
       <div class="pills" id="peoplePills"></div>
+
       <div class="hr"></div>
 
       <h2>工具</h2>
@@ -222,9 +232,9 @@
 
       <h2>说明</h2>
       <div class="hint">
-        - 数据云端存储是<strong>加密</strong>的：没有 6 位口令看不到金额。<br/>
-        - 邀请链接只带 <span class="kbd">room</span>；口令你自己发群里或私聊发。<br/>
-        - 同步策略：最后写入覆盖（建议大家轮流录入，避免互相覆盖）。
+        - 云端存的是<strong>加密后的密文</strong>：没 6 位口令看不到金额。<br/>
+        - 写入需要口令校验（Rules 比对 passHash），防止别人篡改。<br/>
+        - 链接里带 <span class="kbd">?room=xxxx</span>，房间号会自动填入加入框。
       </div>
     </div>
 
@@ -260,7 +270,6 @@
         <tbody id="settleBody"></tbody>
       </table>
     </div>
-
   </div>
 </div>
 
@@ -304,7 +313,7 @@
       <div class="col2">
         <div>
           <label>账单名称</label>
-          <input id="billTitle" placeholder="例如：房租 / 水电" />
+          <input id="billTitle" placeholder="例如：房租 / 水电 / 网费" />
         </div>
         <div>
           <label>金额（总额）</label>
@@ -344,7 +353,7 @@
   </div>
 </div>
 
-<!-- Modal: Share / Collaboration -->
+<!-- Modal: Share -->
 <div class="modalMask" id="modalShare">
   <div class="modal">
     <div class="modalHeader">
@@ -352,11 +361,12 @@
       <button class="ghost" onclick="closeModal('share')">关闭</button>
     </div>
     <div class="modalBody">
+
       <div class="card" style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(75,107,255,.04)">
-        <div style="font-weight:950">房间</div>
+        <div style="font-weight:950">当前房间</div>
         <div class="hint" style="margin-top:6px">
-          - 邀请链接只带 <span class="kbd">room</span>，口令请你另外发给对方。<br/>
-          - 没口令：看不到金额（解密失败），也不能写入。
+          - 邀请链接只带 <span class="kbd">room</span>，口令请你单独发给对方（群里/私聊）。<br/>
+          - 加入成功后弹窗会自动关闭，并提示“进入成功”。
         </div>
 
         <div class="hr"></div>
@@ -373,15 +383,28 @@
         </div>
 
         <div class="row" style="margin-top:10px">
-          <button onclick="createNewRoom()">创建新房间</button>
           <button class="secondary" onclick="copyInviteLink()">复制邀请链接</button>
         </div>
 
         <div class="hr"></div>
 
-        <div class="col2">
+        <div style="font-weight:950">创建新房间</div>
+        <div class="col2" style="margin-top:10px">
           <div>
-            <label>加入已有房间（room）</label>
+            <label>新房间口令（6位数字）</label>
+            <input id="createPassInput" inputmode="numeric" maxlength="6" placeholder="例如：123456" />
+          </div>
+          <div class="row" style="align-items:flex-end">
+            <button onclick="createNewRoom()">创建</button>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div style="font-weight:950">加入已有房间</div>
+        <div class="col2" style="margin-top:10px">
+          <div>
+            <label>room（会自动从链接填入）</label>
             <input id="joinRoomInput" placeholder="例如：b7k2p9xq" />
           </div>
           <div>
@@ -389,9 +412,12 @@
             <input id="joinPassInput" inputmode="numeric" maxlength="6" placeholder="例如：123456" />
           </div>
         </div>
-
         <div class="row" style="margin-top:10px">
-          <button class="secondary" onclick="joinRoom()">加入房间</button>
+          <button class="secondary" onclick="joinRoom()">加入</button>
+        </div>
+
+        <div class="hint" style="margin-top:10px">
+          小提示：如果你刷新页面，系统会尝试从本机记住的口令自动重连（同一台设备有效）。
         </div>
       </div>
 
@@ -410,6 +436,7 @@
           <button class="danger" onclick="clearAll()">清空全部</button>
         </div>
       </div>
+
     </div>
   </div>
 </div>
@@ -419,25 +446,25 @@
   import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js';
   import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js';
 
-  // ====== 填你的 Firebase Web config（Project settings -> Your apps -> Web app -> Config）
-const firebaseConfig = {
-  apiKey: "AIzaSyDhLRcOhh1eTIGHZ8aSZdBZmPH9PuB_P4k",
-  authDomain: "friendtrip-4ead0.firebaseapp.com",
-  projectId: "friendtrip-4ead0",
-  storageBucket: "friendtrip-4ead0.firebasestorage.app",
-  messagingSenderId: "342171915268",
-  appId: "1:342171915268:web:98c7133b35bc20c6171151",
-  measurementId: "G-8NX6SFYXV8"
-};
+  // ========= 1) 把你的 Firebase Web config 粘贴到这里 =========
+  const firebaseConfig = {
+    apiKey: "AIzaSyDhLRcOhh1eTIGHZ8aSZdBZmPH9PuB_P4k",
+    authDomain: "friendtrip-4ead0.firebaseapp.com",
+    projectId: "friendtrip-4ead0",
+    storageBucket: "friendtrip-4ead0.firebasestorage.app",
+    messagingSenderId: "342171915268",
+    appId: "1:342171915268:web:98c7133b35bc20c6171151",
+    measurementId: "G-8NX6SFYXV8"
+  };
 
-  const STORAGE_KEY = "aa_split_state_v5_room_passcode_encrypted";
+  // ========= 基础工具 =========
   const $ = (id)=>document.getElementById(id);
 
   function toast(msg){
     const t = $("toast");
     t.textContent = msg;
     t.style.display = "block";
-    setTimeout(()=>t.style.display="none", 1700);
+    setTimeout(()=>t.style.display="none", 1800);
   }
   function escapeHtml(str){
     return String(str)
@@ -466,7 +493,6 @@ const firebaseConfig = {
   function uid(){
     return Math.random().toString(16).slice(2) + Date.now().toString(16);
   }
-
   function roomIdRandom(){
     const chars = "abcdefghjkmnpqrstuvwxyz23456789";
     let out = "";
@@ -489,8 +515,9 @@ const firebaseConfig = {
     u.hash = "";
     return u.toString();
   }
+  function isSixDigits(x){ return /^[0-9]{6}$/.test(String(x||"").trim()); }
 
-  // ========= 加密工具（AES-GCM + PBKDF2）
+  // ========= 加密：AES-GCM + PBKDF2 =========
   function b64urlFromBytes(bytes){
     let bin = "";
     bytes.forEach(b => bin += String.fromCharCode(b));
@@ -508,7 +535,6 @@ const firebaseConfig = {
     return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,"0")).join("");
   }
   async function deriveAesKey(passcode, roomId){
-    // 用 roomId 做 salt，避免同口令跨房间复用同 key
     const salt = new TextEncoder().encode("room:" + roomId);
     const baseKey = await crypto.subtle.importKey(
       "raw",
@@ -530,10 +556,7 @@ const firebaseConfig = {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const plaintext = new TextEncoder().encode(JSON.stringify(stateObj));
     const cipherBuf = await crypto.subtle.encrypt({ name:"AES-GCM", iv }, key, plaintext);
-    return {
-      iv: b64urlFromBytes(iv),
-      cipher: b64urlFromBytes(new Uint8Array(cipherBuf)),
-    };
+    return { iv: b64urlFromBytes(iv), cipher: b64urlFromBytes(new Uint8Array(cipherBuf)) };
   }
   async function decryptState(cipherB64url, ivB64url, passcode, roomId){
     const key = await deriveAesKey(passcode, roomId);
@@ -543,9 +566,11 @@ const firebaseConfig = {
     const json = new TextDecoder().decode(new Uint8Array(plainBuf));
     return JSON.parse(json);
   }
-  function isSixDigits(x){ return /^[0-9]{6}$/.test(x); }
 
-  // ========= State =========
+  // ========= 本地状态 =========
+  const STORAGE_KEY = "aa_split_state_secure_v1";
+  const PASS_STORE_KEY = "aa_room_pass_secure_v1"; // localStorage: { [roomId]: "123456" }
+
   let state = { people: [], bills: [] };
   function loadLocal(){
     try{
@@ -559,8 +584,23 @@ const firebaseConfig = {
   function saveLocal(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }
+  function storePass(roomId, pass){
+    try{
+      const raw = localStorage.getItem(PASS_STORE_KEY);
+      const obj = raw ? JSON.parse(raw) : {};
+      obj[roomId] = pass;
+      localStorage.setItem(PASS_STORE_KEY, JSON.stringify(obj));
+    }catch(e){}
+  }
+  function getStoredPass(roomId){
+    try{
+      const raw = localStorage.getItem(PASS_STORE_KEY);
+      const obj = raw ? JSON.parse(raw) : {};
+      return obj[roomId] || "";
+    }catch(e){ return ""; }
+  }
 
-  // ========= Modal =========
+  // ========= 弹窗 =========
   function openModal(which){
     if(which==="person") $("modalPerson").style.display="flex";
     if(which==="bill"){
@@ -570,26 +610,27 @@ const firebaseConfig = {
     }
     if(which==="share"){
       refreshCollabUI();
-    
-      // ✅ 自动把链接里的 ?room=xxxx 填到输入框里
+
+      // ✅ 自动把 URL 的 room 填入 joinRoomInput
       const urlRoom = getRoomFromUrl();
-      if (urlRoom) {
+      if(urlRoom){
         $("joinRoomInput").value = urlRoom;
-        // 更友好：直接让用户输入口令
-        setTimeout(() => $("joinPassInput")?.focus(), 0);
+        // 如果本机记住了口令，也自动填（可删）
+        const sp = getStoredPass(urlRoom);
+        if(sp) $("joinPassInput").value = sp;
+        setTimeout(()=> $("joinPassInput").focus(), 0);
       }
-    
+
       $("modalShare").style.display="flex";
     }
-
+  }
   function closeModal(which){
     if(which==="person") $("modalPerson").style.display="none";
     if(which==="bill") $("modalBill").style.display="none";
     if(which==="share") $("modalShare").style.display="none";
   }
-  window.openModal=openModal; window.closeModal=closeModal;
 
-  // ========= People =========
+  // ========= 人员 =========
   function addPerson(){
     const name = $("personName").value.trim();
     if(!name) return;
@@ -599,7 +640,6 @@ const firebaseConfig = {
     touchAndRender("已添加人员");
     closeModal("person");
   }
-  window.addPerson=addPerson;
 
   function renderPeople(){
     const box = $("peoplePills");
@@ -624,7 +664,7 @@ const firebaseConfig = {
     });
   }
 
-  // ========= Bill Form =========
+  // ========= 账单表单 =========
   function seedBillForm(){
     const today=new Date();
     const pad=(n)=>String(n).padStart(2,"0");
@@ -681,9 +721,8 @@ const firebaseConfig = {
     touchAndRender("已创建账单");
     closeModal("bill");
   }
-  window.createBill=createBill;
 
-  // ========= Allocation =========
+  // ========= 分摊/结算 =========
   function computeAllocCents(bill){
     const amountC=toCents(bill.amount);
     const ps=bill.participants||[];
@@ -745,7 +784,6 @@ const firebaseConfig = {
     return transfers;
   }
 
-  // ========= Render =========
   function renderBills(){
     const box=$("billsContainer");
     box.innerHTML="";
@@ -881,7 +919,7 @@ const firebaseConfig = {
     renderSummary();
   }
 
-  // ========= JSON backup =========
+  // ========= JSON 备份 =========
   function exportJSONToBox(){ $("jsonBox").value = JSON.stringify(state,null,2); toast("已导出到文本框"); }
   function importJSONFromBox(){
     try{
@@ -906,19 +944,15 @@ const firebaseConfig = {
     state={people:[], bills:[]};
     touchAndRender("已清空");
   }
-  window.exportJSON=exportJSON;
-  window.exportJSONToBox=exportJSONToBox;
-  window.importJSONFromBox=importJSONFromBox;
-  window.clearAll=clearAll;
 
-  // ========= Realtime collaboration (encrypted) =========
+  // ========= Firebase 真协作（加密） =========
   let app=null, auth=null, db=null;
   let clientId = localStorage.getItem("aa_client_id") || uid();
   localStorage.setItem("aa_client_id", clientId);
 
   let roomId="";
-  let passcode="";          // 6 digits
-  let passHash="";          // sha256(passcode)
+  let passcode="";
+  let passHash="";
   let unsubRoom=null;
 
   let localVersion=0;
@@ -945,108 +979,117 @@ const firebaseConfig = {
     });
   }
 
+  function friendlyErr(e){
+    const msg = String(e?.message || e || "unknown");
+    if(msg.includes("auth/unauthorized-domain")) return "Firebase 未授权域名：请在 Firebase Auth 里添加 hxyder.github.io";
+    if(msg.includes("permission-denied")) return "Firestore Rules 拒绝写入：检查 Rules 是否按要求发布";
+    return msg;
+  }
+
   async function connectRoom(room, pass){
-    if(!isSixDigits(pass)){
-      toast("口令必须是 6 位数字");
+    try{
+      if(!room){ toast("room 不能为空"); return false; }
+      if(!isSixDigits(pass)){ toast("口令必须是 6 位数字"); return false; }
+
+      await ensureFirebase();
+      await ensureAuth();
+
+      roomId = room;
+      passcode = pass;
+      passHash = await sha256Hex(passcode);
+
+      setRoomToUrl(roomId);
+      refreshCollabUI();
+      setSyncBadge(`连接中：room=${roomId}`);
+
+      storePass(roomId, passcode);
+
+      if(unsubRoom) unsubRoom();
+
+      const roomRef = doc(db, "rooms", roomId);
+      const snap = await getDoc(roomRef);
+
+      if(snap.exists()){
+        const data = snap.data();
+        if(String(data.passHash||"") !== passHash){
+          setSyncBadge("口令错误：无法加入");
+          toast("口令错误：无法加入该房间");
+          roomId=""; passcode=""; passHash="";
+          refreshCollabUI();
+          return false;
+        }
+
+        try{
+          if(data.cipher && data.iv){
+            const remoteState = await decryptState(data.cipher, data.iv, passcode, roomId);
+            state = remoteState;
+            saveLocal();
+            renderAll();
+          }
+        }catch(e){
+          setSyncBadge("解密失败：口令不对或数据损坏");
+          toast("解密失败：口令不对或数据损坏");
+          roomId=""; passcode=""; passHash="";
+          refreshCollabUI();
+          return false;
+        }
+      }else{
+        // 新房间：用本地 state 初始化
+        const enc = await encryptState(state, passcode, roomId);
+        await setDoc(roomRef, {
+          passHash,
+          cipher: enc.cipher,
+          iv: enc.iv,
+          version: localVersion,
+          updatedAt: serverTimestamp(),
+          updatedBy: clientId,
+        }, { merge:false });
+      }
+
+      // 监听远端变更
+      unsubRoom = onSnapshot(roomRef, async (s)=>{
+        const data = s.data();
+        if(!data) return;
+        if(String(data.passHash||"") !== passHash) return;
+
+        const v = Number(data.version || 0);
+        const by = String(data.updatedBy || "");
+        if(!data.cipher || !data.iv) return;
+
+        if(by === clientId){
+          lastRemoteVersion = Math.max(lastRemoteVersion, v);
+          return;
+        }
+
+        if(v > lastRemoteVersion && v >= localVersion){
+          try{
+            const remoteState = await decryptState(data.cipher, data.iv, passcode, roomId);
+            lastRemoteVersion = v;
+            localVersion = v;
+            state = remoteState;
+            saveLocal();
+            renderAll();
+            setSyncBadge(`已同步：room=${roomId}`);
+          }catch(e){
+            setSyncBadge("同步到的内容无法解密（口令不匹配？）");
+          }
+        }
+      });
+
+      setSyncBadge(`已同步：room=${roomId}`);
+      return true;
+
+    }catch(e){
+      const m = friendlyErr(e);
+      setSyncBadge("连接失败：" + m);
+      toast("连接失败：" + m);
+      console.error(e);
       return false;
     }
-    await ensureFirebase();
-    await ensureAuth();
-
-    roomId = room;
-    passcode = pass;
-    passHash = await sha256Hex(passcode);
-
-    setRoomToUrl(roomId);
-    refreshCollabUI();
-    setSyncBadge(`协作中：room=${roomId}`);
-
-    if(unsubRoom) unsubRoom();
-
-    const roomRef = doc(db, "rooms", roomId);
-
-    // 如果房间已存在，先校验 passHash
-    const snap = await getDoc(roomRef);
-    if(snap.exists()){
-      const data = snap.data();
-      if(String(data.passHash||"") !== passHash){
-        // 清理本地 room/pass
-        roomId=""; passcode=""; passHash="";
-        setSyncBadge("口令错误：无法加入该房间");
-        refreshCollabUI();
-        toast("口令错误：无法加入该房间");
-        return false;
-      }
-
-      // 尝试解密并载入
-      try{
-        if(data.cipher && data.iv){
-          const remoteState = await decryptState(data.cipher, data.iv, passcode, roomId);
-          state = remoteState;
-          saveLocal();
-          renderAll();
-        }
-      }catch(e){
-        roomId=""; passcode=""; passHash="";
-        setSyncBadge("解密失败：口令不对或数据损坏");
-        refreshCollabUI();
-        toast("解密失败：口令不对或数据损坏");
-        return false;
-      }
-    }else{
-      // 房间不存在：用当前本地 state 初始化（加密后写入）
-      const enc = await encryptState(state, passcode, roomId);
-      await setDoc(roomRef, {
-        passHash,
-        cipher: enc.cipher,
-        iv: enc.iv,
-        version: localVersion,
-        updatedAt: serverTimestamp(),
-        updatedBy: clientId,
-      }, { merge:false });
-    }
-
-    // 监听远端变更
-    unsubRoom = onSnapshot(roomRef, async (s)=>{
-      const data = s.data();
-      if(!data) return;
-
-      // passHash 不匹配就忽略（理论上不会发生）
-      if(String(data.passHash||"") !== passHash) return;
-
-      const v = Number(data.version || 0);
-      const by = String(data.updatedBy || "");
-      if(!data.cipher || !data.iv) return;
-
-      // 忽略自己回显
-      if(by === clientId){
-        lastRemoteVersion = Math.max(lastRemoteVersion, v);
-        return;
-      }
-
-      if(v > lastRemoteVersion && v >= localVersion){
-        try{
-          const remoteState = await decryptState(data.cipher, data.iv, passcode, roomId);
-          lastRemoteVersion = v;
-          localVersion = v;
-          state = remoteState;
-          saveLocal();
-          renderAll();
-          setSyncBadge(`已同步：room=${roomId}`);
-        }catch(e){
-          setSyncBadge("同步到的内容无法解密（口令不匹配？）");
-        }
-      }
-    });
-
-    toast("已进入协作房间（加密同步）");
-    setSyncBadge(`已同步：room=${roomId}`);
-    
-
   }
 
   function schedulePush(){
-    if(!roomId || !db) return;
+    if(!roomId || !db || !passcode) return;
     if(pushTimer) clearTimeout(pushTimer);
     pushTimer = setTimeout(pushNow, 650);
   }
@@ -1061,7 +1104,7 @@ const firebaseConfig = {
       const enc = await encryptState(state, passcode, roomId);
 
       await setDoc(roomRef, {
-        passHash,              // Rules 用它校验口令
+        passHash,
         cipher: enc.cipher,
         iv: enc.iv,
         version: localVersion,
@@ -1071,9 +1114,10 @@ const firebaseConfig = {
 
       setSyncBadge(`已同步：room=${roomId}`);
     }catch(e){
+      const m = friendlyErr(e);
+      setSyncBadge("同步失败：" + m);
+      toast("同步失败：" + m);
       console.error(e);
-      setSyncBadge("同步失败：检查 Firebase 配置/Rules/域名");
-      toast("同步失败：检查 Firebase 配置/Rules/域名");
     }finally{
       pushing = false;
     }
@@ -1088,14 +1132,15 @@ const firebaseConfig = {
   }
 
   async function createNewRoom(){
-    const code = prompt("设置 6 位房间口令（数字）：例如 123456");
-    if(code === null) return;
-    const pass = String(code).trim();
-    if(!isSixDigits(pass)){ toast("口令必须是 6 位数字"); return; }
-
+    const pass = $("createPassInput").value.trim();
+    if(!isSixDigits(pass)){ toast("请在“新房间口令”里输入 6 位数字"); return; }
     const rid = roomIdRandom();
-    await connectRoom(rid, pass);
-    refreshCollabUI();
+    const ok = await connectRoom(rid, pass);
+    if(ok){
+      refreshCollabUI();
+      toast("创建成功（已进入房间）");
+      closeModal("share");
+    }
   }
 
   async function joinRoom(){
@@ -1103,19 +1148,19 @@ const firebaseConfig = {
     const pass = $("joinPassInput").value.trim();
     if(!rid){ toast("请输入 room"); return; }
     if(!isSixDigits(pass)){ toast("口令必须是 6 位数字"); return; }
-  
+
     const ok = await connectRoom(rid, pass);
-  
-    if (ok) {
+    if(ok){
       $("joinRoomInput").value="";
       $("joinPassInput").value="";
-      closeModal("share");
+      refreshCollabUI();
       toast("进入成功");
+      closeModal("share");
     }
   }
 
   async function copyInviteLink(){
-    if(!roomId){ toast("先创建/加入房间"); return; }
+    if(!roomId){ toast("还没进入房间"); return; }
     const link = inviteLink(roomId);
     try{
       await navigator.clipboard.writeText(link);
@@ -1127,26 +1172,45 @@ const firebaseConfig = {
     }
   }
 
-  window.createNewRoom=createNewRoom;
-  window.joinRoom=joinRoom;
-  window.copyInviteLink=copyInviteLink;
+  // ========= 全局绑定（解决“点按钮没反应”） =========
+  window.openModal = openModal;
+  window.closeModal = closeModal;
+  window.addPerson = addPerson;
+  window.createBill = createBill;
+  window.exportJSON = exportJSON;
+  window.exportJSONToBox = exportJSONToBox;
+  window.importJSONFromBox = importJSONFromBox;
+  window.clearAll = clearAll;
 
-  // ========= Init =========
+  window.createNewRoom = createNewRoom;
+  window.joinRoom = joinRoom;
+  window.copyInviteLink = copyInviteLink;
+
+  // ========= 初始化 =========
   loadLocal();
   renderAll();
 
+  // URL 带 room：自动打开分享弹窗并填好 room
   const urlRoom = getRoomFromUrl();
   if(urlRoom){
-    setSyncBadge("检测到 room：请点“协作/分享”并输入口令加入");
-    roomId = urlRoom;
-    refreshCollabUI();
+    setSyncBadge("检测到房间号：请输入口令加入");
+    // 自动弹出协作窗口，直接让用户输口令
+    setTimeout(()=> openModal("share"), 250);
+
+    // 如果本机记住口令，尝试自动加入（同一设备）
+    const sp = getStoredPass(urlRoom);
+    if(sp && isSixDigits(sp)){
+      setTimeout(async ()=>{
+        const ok = await connectRoom(urlRoom, sp);
+        if(ok){ toast("已自动重连成功"); }
+      }, 600);
+    }
   }else{
-    setSyncBadge("离线：仅本机保存（点“协作/分享”创建 room）");
+    setSyncBadge("离线：仅本机保存（点“协作/分享”创建/加入）");
   }
 
   refreshCollabUI();
+
 </script>
 </body>
 </html>
-
-
