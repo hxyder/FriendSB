@@ -196,6 +196,57 @@
       background: rgba(18,22,42,.06);
       border:1px solid var(--line);
     }
+    /* ===== Bill collapse + prettier table ===== */
+    .bill-topline{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:flex-start;
+    }
+    .bill-actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+    .bill-toggle{
+      padding:8px 10px;
+      border-radius:12px;
+    }
+    .bill-body{
+      margin-top:10px;
+      display:none;
+    }
+    .bill-body.open{display:block;}
+    
+    .bill-table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      overflow:hidden;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.95);
+    }
+    .bill-table thead th{
+      background: rgba(75,107,255,.07);
+      border-bottom:1px solid var(--line);
+    }
+    .bill-table th, .bill-table td{
+      padding:10px 10px;
+      font-size:12px;
+    }
+    .bill-table tbody tr:nth-child(even){
+      background: rgba(75,107,255,.03);
+    }
+    .bill-days-input{
+      width:100px;
+      text-align:right;
+      border-radius:12px;
+      padding:9px 10px;
+    }
+    .bill-suggest{
+      font-size:11px;
+      color:var(--muted);
+      margin-top:4px;
+    }
+
   </style>
 </head>
 
@@ -783,6 +834,17 @@
     }
     return transfers;
   }
+  const EXPAND_KEY = "aa_bill_expand_v1";
+  const isMobile = () => window.matchMedia("(max-width: 640px)").matches;
+  
+  let expandedBills = new Set();
+  try{
+    expandedBills = new Set(JSON.parse(localStorage.getItem(EXPAND_KEY) || "[]"));
+  }catch(e){ expandedBills = new Set(); }
+  
+  function persistExpanded(){
+    localStorage.setItem(EXPAND_KEY, JSON.stringify([...expandedBills]));
+  }
 
   function renderBills(){
     const box=$("billsContainer");
@@ -800,8 +862,11 @@
       card.style.marginBottom="12px";
 
       const payerOptions = state.people.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
-      card.innerHTML=`
-        <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap">
+      const openByDefault = !isMobile();
+      const isOpen = expandedBills.has(b.id) || openByDefault;
+
+      card.innerHTML = `
+        <div class="bill-topline">
           <div>
             <div style="font-weight:950">${escapeHtml(b.title||"未命名账单")}</div>
             <div class="small muted" style="margin-top:4px">
@@ -809,25 +874,37 @@
               日期：<span class="mono">${escapeHtml(b.start)}</span> ~ <span class="mono">${escapeHtml(b.end)}</span>（${billDays}天） ·
               总人天：<span class="mono">${totalPersonDays}</span>
             </div>
+      
             <div class="row" style="margin-top:8px">
               <span class="badge">付款人</span>
               <select data-role="payer" style="min-width:160px">${payerOptions}</select>
               <button class="secondary ghost" data-act="setAll">一键全程</button>
             </div>
           </div>
-          <div class="row">
+      
+          <div class="bill-actions">
+            <button class="secondary ghost bill-toggle" data-act="toggle">${isOpen ? "收起" : "展开"}</button>
             <button class="secondary ghost" data-act="dup">复制</button>
             <button class="danger" data-act="del">删除</button>
           </div>
         </div>
-
-        <div class="hr"></div>
-
-        <table>
-          <thead><tr><th>参与人</th><th class="right">参与天数</th><th class="right">应付</th></tr></thead>
-          <tbody data-role="tb"></tbody>
-        </table>
+      
+        <div class="bill-body ${isOpen ? "open" : ""}" data-role="body">
+          <div class="hr"></div>
+      
+          <table class="bill-table">
+            <thead>
+              <tr>
+                <th>参与人</th>
+                <th class="right">参与天数</th>
+                <th class="right">应付</th>
+              </tr>
+            </thead>
+            <tbody data-role="tb"></tbody>
+          </table>
+        </div>
       `;
+
 
       const payerSel=card.querySelector('[data-role="payer"]');
       payerSel.value=b.payer || state.people[0] || "";
@@ -847,6 +924,19 @@
         (b.participants||[]).forEach(pp=>pp.days=billDays);
         touchAndRender("已设置全程");
       });
+      // ✅ 折叠/展开（新增）
+      const bodyBox = card.querySelector('[data-role="body"]');
+      const toggleBtn = card.querySelector('[data-act="toggle"]');
+      
+      toggleBtn.addEventListener("click", ()=>{
+        const willOpen = !bodyBox.classList.contains("open");
+        bodyBox.classList.toggle("open", willOpen);
+        toggleBtn.textContent = willOpen ? "收起" : "展开";
+      
+        if(willOpen) expandedBills.add(b.id);
+        else expandedBills.delete(b.id);
+        persistExpanded();
+      });
 
       const tb=card.querySelector('[data-role="tb"]');
       (b.participants||[]).forEach(pp=>{
@@ -855,9 +945,10 @@
         tr.innerHTML=`
           <td style="font-weight:900">${escapeHtml(pp.name)}</td>
           <td class="right">
-            <input type="number" min="0" step="1" value="${Math.max(0, Math.floor(Number(pp.days)||0))}"
-              style="width:110px; text-align:right; border-radius:12px" />
-            <div class="small muted">建议：${billDays}</div>
+            <input type="number" min="0" step="1"
+              value="${Math.max(0, Math.floor(Number(pp.days)||0))}"
+              class="bill-days-input" />
+            <div class="bill-suggest">建议：${billDays}</div>
           </td>
           <td class="right mono">$${centsToMoney(shareC)}</td>
         `;
@@ -1214,3 +1305,4 @@
 </script>
 </body>
 </html>
+
