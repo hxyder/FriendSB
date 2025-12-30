@@ -397,7 +397,7 @@
       </div>
 
       <div class="row" style="margin-top:12px">
-        <button onclick="createBill()">创建</button>
+        <button id="billSaveBtn" onclick="createBill()">创建</button>
         <button class="secondary" onclick="closeModal('bill')">取消</button>
       </div>
     </div>
@@ -621,7 +621,7 @@
   // ========= 本地状态 =========
   const STORAGE_KEY = "aa_split_state_secure_v1";
   const PASS_STORE_KEY = "aa_room_pass_secure_v1"; // localStorage: { [roomId]: "123456" }
-
+  let editingBillId = null;
   let state = { people: [], bills: [] };
   function loadLocal(){
     try{
@@ -656,7 +656,11 @@
     if(which==="person") $("modalPerson").style.display="flex";
     if(which==="bill"){
       if(state.people.length===0){ toast("先添加至少 1 个人"); openModal("person"); return; }
+      editingBillId = null; // ✅ 默认进入创建模式
       seedBillForm();
+      // 标题/按钮文字
+      document.querySelector("#modalBill .modalTitle").textContent = "添加账单";
+      $("billSaveBtn").textContent = "创建";
       $("modalBill").style.display="flex";
     }
     if(which==="share"){
@@ -677,9 +681,20 @@
   }
   function closeModal(which){
     if(which==="person") $("modalPerson").style.display="none";
-    if(which==="bill") $("modalBill").style.display="none";
+  
+    if(which==="bill"){
+      // ✅ 清理编辑状态（新增）
+      editingBillId = null;
+      document.querySelector("#modalBill .modalTitle").textContent = "添加账单";
+      const btn = document.getElementById("billSaveBtn");
+      if(btn) btn.textContent = "创建";
+  
+      $("modalBill").style.display="none";
+    }
+  
     if(which==="share") $("modalShare").style.display="none";
   }
+
 
   // ========= 人员 =========
   function addPerson(){
@@ -765,12 +780,74 @@
     if(!payer){ toast("请选择付款人"); return; }
     if(selected.length===0){ toast("至少选择 1 个参与人"); return; }
 
-    const participants = selected.map(name=>({name, days: billDays}));
+    const participantsSelected = selected;
+    
+    // ✅ 编辑模式：更新原账单（尽量保留每个人已设置的 days）
+    if(editingBillId){
+      const b = state.bills.find(x=>x.id===editingBillId);
+      if(!b){ toast("编辑失败：找不到账单"); return; }
+    
+      b.title = title;
+      b.amount = amount;
+      b.start = start;
+      b.end = end;
+      b.payer = payer;
+    
+      const oldMap = new Map((b.participants||[]).map(p=>[p.name, p.days]));
+      b.participants = participantsSelected.map(name=>({
+        name,
+        // 原来就存在：保留用户改过的 days；新加入：默认等于账单天数
+        days: Math.max(0, Math.floor(Number(oldMap.get(name) ?? billDays) || 0))
+      }));
+    
+      editingBillId = null;
+      $("billTitle").value=""; $("billAmount").value="";
+      touchAndRender("已保存修改");
+      closeModal("bill");
+      return;
+    }
+    
+    // ✅ 创建模式：新建账单
+    const participants = participantsSelected.map(name=>({name, days: billDays}));
     state.bills.unshift({ id: uid(), title, amount, start, end, payer, participants });
-
+    
     $("billTitle").value=""; $("billAmount").value="";
     touchAndRender("已创建账单");
     closeModal("bill");
+
+  }
+  
+  function openEditBill(billId){
+    const b = state.bills.find(x=>x.id===billId);
+    if(!b){ toast("找不到该账单"); return; }
+  
+    editingBillId = billId;
+  
+    // 先用现有逻辑生成表单（人名、checkbox、天数监听等）
+    seedBillForm();
+  
+    // 回填字段
+    $("billTitle").value = b.title || "";
+    $("billAmount").value = (Number(b.amount)||0).toFixed(2).replace(/\.00$/,""); // 1200.00 => 1200
+    $("billStart").value = b.start || "";
+    $("billEnd").value = b.end || "";
+    $("billPayer").value = b.payer || (state.people[0]||"");
+  
+    // 触发天数刷新
+    $("billStart").dispatchEvent(new Event("change"));
+    $("billEnd").dispatchEvent(new Event("change"));
+  
+    // 回填参与人勾选
+    const selected = new Set((b.participants||[]).map(p=>p.name));
+    [...$("billParticipantsChecks").querySelectorAll('input[type=checkbox]')].forEach(chk=>{
+      chk.checked = selected.has(chk.value);
+    });
+  
+    // 改标题/按钮
+    document.querySelector("#modalBill .modalTitle").textContent = "编辑账单";
+    $("billSaveBtn").textContent = "保存修改";
+  
+    $("modalBill").style.display="flex";
   }
 
   // ========= 分摊/结算 =========
@@ -884,6 +961,7 @@
       
           <div class="bill-actions">
             <button class="secondary ghost bill-toggle" data-act="toggle">${isOpen ? "收起" : "展开"}</button>
+            <button class="secondary ghost" data-act="edit">编辑</button>
             <button class="secondary ghost" data-act="dup">复制</button>
             <button class="danger" data-act="del">删除</button>
           </div>
@@ -924,6 +1002,10 @@
         (b.participants||[]).forEach(pp=>pp.days=billDays);
         touchAndRender("已设置全程");
       });
+      card.querySelector('[data-act="edit"]').addEventListener("click", ()=>{
+        openEditBill(b.id);
+      });
+
       // ✅ 折叠/展开（新增）
       const bodyBox = card.querySelector('[data-role="body"]');
       const toggleBtn = card.querySelector('[data-act="toggle"]');
@@ -1267,6 +1349,7 @@
   window.openModal = openModal;
   window.closeModal = closeModal;
   window.addPerson = addPerson;
+  window.openEditBill = openEditBill;
   window.createBill = createBill;
   window.exportJSON = exportJSON;
   window.exportJSONToBox = exportJSONToBox;
@@ -1305,4 +1388,5 @@
 </script>
 </body>
 </html>
+
 
