@@ -421,6 +421,22 @@
   }
   .tabPanel{ display:none; }
   .tabPanel.active{ display:block; }
+  /* ===== AI chat bubbles ===== */
+  .ai-bubble{
+    max-width: 92%;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,.92);
+    box-shadow: 0 10px 22px rgba(18,22,42,.10);
+    line-height: 1.55;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .ai-user{ align-self:flex-end; background: rgba(75,107,255,.12); border-color: rgba(75,107,255,.25); }
+  .ai-assistant{ align-self:flex-start; background: rgba(162,75,255,.10); border-color: rgba(162,75,255,.22); }
+      
 </style>
 </head>
 
@@ -686,6 +702,29 @@
         <div class="hint" style="margin-top:10px">
           小提示：如果你刷新页面，系统会尝试从本机记住的口令自动重连（同一台设备有效）。
         </div>
+        <div class="hr"></div>
+
+        <div style="font-weight:950">AI（仅你本人使用）</div>
+        <div class="hint" style="margin-top:6px">
+          - APP_TOKEN 只保存在你本机浏览器（localStorage），不会同步到 Firebase。<br/>
+          - 不要把 APP_TOKEN 写进 GitHub 代码或发给别人。
+        </div>
+        
+        <div class="col2" style="margin-top:10px">
+          <div>
+            <label>APP_TOKEN（本机保存）</label>
+            <input id="aiTokenInput" type="password" placeholder="粘贴你的 APP_TOKEN" />
+            <div class="hint" id="aiTokenStatus" style="margin-top:6px"></div>
+          </div>
+          <div class="row" style="align-items:flex-end">
+            <button class="secondary" onclick="saveAiToken()">保存</button>
+            <button class="danger" onclick="clearAiToken()">清除</button>
+          </div>
+        </div>
+        
+        <div class="row" style="margin-top:10px">
+          <button onclick="openModal('ai')">打开 AI 聊天</button>
+        </div>
       </div>
 
       <div class="hr"></div>
@@ -708,11 +747,179 @@
   </div>
 </div>
 
+<!-- Modal: AI -->
+<div class="modalMask" id="modalAI">
+  <div class="modal">
+    <div class="modalHeader">
+      <div class="modalTitle">AI 助手（账单/分摊/结算）</div>
+      <button class="ghost" onclick="closeModal('ai')">关闭</button>
+    </div>
+    <div class="modalBody">
+      <div id="aiMsgs" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+      <div class="hr"></div>
+
+      <label>输入</label>
+      <textarea id="aiInput" rows="3" placeholder="例如：帮我检查一下这个结算是否合理？"></textarea>
+
+      <div class="row" style="margin-top:10px; justify-content:space-between">
+        <button class="secondary" onclick="seedAiContext()">带入当前账单摘要</button>
+        <button onclick="sendAi()">发送</button>
+      </div>
+
+      <div class="hint" id="aiHint" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>
+  
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js';
   import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js';
   import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js';
 
+  // ===== AI settings =====
+  const WORKER_BASE = "https://derfriendtrip.hxy94045.workers.dev";
+  const AI_TOKEN_KEY = "aa_ai_app_token_v1";
+  let aiHistory = []; // 仅本机，不同步
+  
+  function getAiToken(){ return localStorage.getItem(AI_TOKEN_KEY) || ""; }
+  function setAiToken(t){ localStorage.setItem(AI_TOKEN_KEY, t); }
+  function delAiToken(){ localStorage.removeItem(AI_TOKEN_KEY); }
+  
+  function refreshAiTokenStatus(){
+    const el = document.getElementById("aiTokenStatus");
+    if(!el) return;
+    el.textContent = getAiToken() ? "✅ 已设置 APP_TOKEN（仅本机）" : "⚠️ 未设置 APP_TOKEN（无法调用 AI）";
+  }
+  
+  function saveAiToken(){
+    const v = (document.getElementById("aiTokenInput")?.value || "").trim();
+    if(!v){ toast("请输入 APP_TOKEN"); return; }
+    setAiToken(v);
+    document.getElementById("aiTokenInput").value = "";
+    refreshAiTokenStatus();
+    toast("已保存 APP_TOKEN（仅本机）");
+  }
+  function clearAiToken(){
+    delAiToken();
+    refreshAiTokenStatus();
+    toast("已清除 APP_TOKEN");
+  }
+  
+  // ===== AI UI =====
+  function renderAiMsgs(){
+    const box = document.getElementById("aiMsgs");
+    if(!box) return;
+    box.innerHTML = "";
+    if(aiHistory.length === 0){
+      box.innerHTML = `<div class="hint">提示：先加入房间并输入口令，再在“协作/分享”里保存 APP_TOKEN，然后就能聊天。</div>`;
+      return;
+    }
+    for(const m of aiHistory){
+      const div = document.createElement("div");
+      div.className = "ai-bubble " + (m.role === "user" ? "ai-user" : "ai-assistant");
+      div.textContent = m.content || "";
+      box.appendChild(div);
+    }
+    // 滚到底
+    box.parentElement?.scrollTo?.({ top: 999999, behavior:"smooth" });
+  }
+  
+  function seedAiContext(){
+    // 把当前账单的摘要塞到输入框，方便提问
+    const txt = document.getElementById("aiInput");
+    if(!txt) return;
+  
+    const { owed, paid, net } = computeTotals();
+    const transfers = computeSettlement(net);
+  
+    const billsBrief = state.bills.slice(0, 8).map(b=>{
+      const billDays = daysInclusive(b.start, b.end);
+      const ps = (b.participants||[]).length;
+      return `- ${b.title} | payer=${b.payer} | $${Number(b.amount||0).toFixed(2)} | ${billDays}天 | ${ps}人`;
+    }).join("\n") || "(暂无账单)";
+  
+    const peopleBrief = state.people.map(p=>{
+      const n = net.get(p)||0;
+      return `- ${p}: net=$${centsToMoney(n)}`;
+    }).join("\n") || "(暂无人员)";
+  
+    const transBrief = transfers.map(t=>`${t.from} -> ${t.to}: $${centsToMoney(t.amountC)}`).join("\n") || "(无需转账)";
+  
+    txt.value =
+  `我当前的账单/分摊情况如下，请帮我分析/检查/给建议：
+  
+  账单（最多8条）：
+  ${billsBrief}
+  
+  每人净额（paid-owed）：
+  ${peopleBrief}
+  
+  最少转账方案：
+  ${transBrief}
+  
+  我的问题是：`;
+    toast("已带入摘要");
+  }
+  
+  async function callAI(messages){
+    if(!roomId){ throw new Error("请先加入房间（roomId 为空）"); }
+    if(!/^\d{6}$/.test(passcode||"")){ throw new Error("请先输入 6 位口令加入房间"); }
+    const token = getAiToken();
+    if(!token) throw new Error("请先在“协作/分享”里保存 APP_TOKEN");
+  
+    const r = await fetch(`${WORKER_BASE}/ai`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-APP-TOKEN": token,
+      },
+      body: JSON.stringify({
+        roomId,
+        passcode,
+        messages,
+        model: "deepseek-chat",
+        temperature: 0.2
+      })
+    });
+  
+    const data = await r.json().catch(()=> ({}));
+    if(!r.ok){
+      throw new Error(data.error || `AI 请求失败（${r.status}）`);
+    }
+    // DeepSeek 返回结构：choices[0].message.content
+    const content = data?.choices?.[0]?.message?.content ?? JSON.stringify(data);
+    return content;
+  }
+  
+  async function sendAi(){
+    const input = document.getElementById("aiInput");
+    const hint = document.getElementById("aiHint");
+    const text = (input?.value || "").trim();
+    if(!text){ toast("请输入内容"); return; }
+  
+    try{
+      hint.textContent = "AI 正在思考…";
+      aiHistory.push({ role:"user", content:text });
+      renderAiMsgs();
+      input.value = "";
+  
+      const sys = {
+        role: "system",
+        content: "你是账单分摊助手。用户使用“人天”分摊，付款人垫付，最后用净额与最少转账方案结算。请用中文回答，尽量给出可执行建议。"
+      };
+      const msgs = [sys, ...aiHistory.slice(-12)]; // 只带最近对话，避免太长
+  
+      const ans = await callAI(msgs);
+      aiHistory.push({ role:"assistant", content: ans });
+      renderAiMsgs();
+      hint.textContent = "";
+    }catch(e){
+      hint.textContent = "";
+      toast(e.message || "AI 调用失败");
+    }
+  }
+  
   const ACCENT_PALETTE = [
     ["#12c2ff","#3b5cff"], // cyan->blue
     ["#b24bff","#3b5cff"], // purple->blue
@@ -979,7 +1186,7 @@
   }
   function closeModal(which){
     if(which==="person") $("modalPerson").style.display="none";
-  
+    if(which==="ai") document.getElementById("modalAI").style.display="none";
     if(which==="bill"){
       // ✅ 清理编辑状态（新增）
       editingBillId = null;
@@ -1867,6 +2074,10 @@ function syncFilterUI(){
   window.createNewRoom = createNewRoom;
   window.joinRoom = joinRoom;
   window.copyInviteLink = copyInviteLink;
+  window.saveAiToken = saveAiToken;
+  window.clearAiToken = clearAiToken;
+  window.seedAiContext = seedAiContext;
+  window.sendAi = sendAi;
 
   // ========= 初始化 =========
   loadLocal();
@@ -1910,6 +2121,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
