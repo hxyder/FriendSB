@@ -193,6 +193,31 @@
     padding:12px 10px;
     border-radius:16px;
   }
+  /* ===== Action buttons per bill ===== */
+  button[data-act="toggle"]{
+    background: linear-gradient(90deg, rgba(18,194,255,.95), rgba(59,92,255,.92));
+    box-shadow: 0 10px 22px rgba(18,194,255,.18);
+    color:white;
+    border:none;
+  }
+  button[data-act="edit"]{
+    background: linear-gradient(90deg, rgba(59,92,255,.95), rgba(178,75,255,.92));
+    box-shadow: 0 10px 22px rgba(178,75,255,.16);
+    color:white;
+    border:none;
+  }
+  button[data-act="dup"]{
+    background: linear-gradient(90deg, rgba(255,159,47,.92), rgba(255,59,122,.88));
+    box-shadow: 0 10px 22px rgba(255,159,47,.14);
+    color:white;
+    border:none;
+  }
+  button[data-act="setAll"]{
+    background: linear-gradient(90deg, rgba(20,184,106,.90), rgba(18,194,255,.86));
+    box-shadow: 0 10px 22px rgba(20,184,106,.14);
+    color:white;
+    border:none;
+  }
 
   /* ===== Function-colored buttons (no new classes needed) =====
      By targeting your existing bottom buttons order:
@@ -347,6 +372,26 @@
     color:var(--muted);
     margin-top:4px;
   }
+  /* ===== Bill card accent ===== */
+  .billCard{
+    position:relative;
+    overflow:hidden;
+  }
+  .billCard::before{
+    content:"";
+    position:absolute;
+    left:0; top:0; bottom:0;
+    width:6px;
+    background: linear-gradient(180deg, var(--accent1), var(--accent2));
+    opacity:.95;
+  }
+  .billCardHeaderGlow{
+    background: linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,0)),
+                linear-gradient(90deg, color-mix(in srgb, var(--accent1) 14%, transparent),
+                                     color-mix(in srgb, var(--accent2) 10%, transparent));
+    border-radius:14px;
+    padding:10px;
+  }
 
   /* ===== Tabs for 账单/汇总/结算 ===== */
   .tabs{
@@ -436,6 +481,28 @@
             <button class="secondary ghost" id="btnBillsExpand">展开列表</button>
           </div>
         </div>
+        <div class="card" style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(255,255,255,.75); margin-top:10px">
+          <div class="col2">
+            <div>
+              <label>筛选付款人</label>
+              <select id="filterPayer"></select>
+            </div>
+            <div class="row" style="align-items:flex-end; justify-content:flex-end">
+              <button class="secondary" id="btnFilterClear">清空筛选</button>
+            </div>
+            <div>
+              <label>开始日期（可不填）</label>
+              <input id="filterFrom" type="date" />
+            </div>
+            <div>
+              <label>结束日期（可不填）</label>
+              <input id="filterTo" type="date" />
+            </div>
+          </div>
+          <div class="hint" style="margin-top:8px">
+            日期筛选按“与账单日期区间有交集”判断（更符合跨天账单）。
+          </div>
+        </div>        
         <div id="billsContainer"></div>
       </div>
     
@@ -646,6 +713,28 @@
   import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js';
   import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js';
 
+  const ACCENT_PALETTE = [
+    ["#12c2ff","#3b5cff"], // cyan->blue
+    ["#b24bff","#3b5cff"], // purple->blue
+    ["#ff9f2f","#ff3b7a"], // orange->pink
+    ["#14b86a","#12c2ff"], // green->cyan
+    ["#ff3b7a","#b24bff"], // pink->purple
+    ["#3b5cff","#14b86a"], // blue->green
+  ];
+  
+  function hashStr(s){
+    s = String(s||"");
+    let h = 2166136261;
+    for(let i=0;i<s.length;i++){
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h>>>0);
+  }
+  function accentForName(name){
+    const idx = hashStr(name) % ACCENT_PALETTE.length;
+    return ACCENT_PALETTE[idx];
+  }
 
   // ===== Tabs logic =====
   const TAB_KEY = "aa_main_tab_v1";
@@ -1112,12 +1201,92 @@
     localStorage.setItem(BILLS_VIEW_KEY, JSON.stringify(!!billsCompact));
   }
 
+  const FILTER_KEY = "aa_bill_filter_v1";
+  let billFilter = { payer:"", from:"", to:"" };
+  try{ billFilter = JSON.parse(localStorage.getItem(FILTER_KEY) || "{}"); }catch(e){}
+  billFilter = { payer: billFilter.payer||"", from: billFilter.from||"", to: billFilter.to||"" };
   
+  function saveBillFilter(){
+    localStorage.setItem(FILTER_KEY, JSON.stringify(billFilter));
+  }
+  
+  function date0(s){ return s ? new Date(s + "T00:00:00") : null; }
+  
+  // 交集判断：bill[bs,be] 与 filter[fs,fe] 有交集
+  function inRangeOverlap(b){
+    const bs = date0(b.start), be = date0(b.end);
+    const fs = date0(billFilter.from), fe = date0(billFilter.to);
+    if(!bs || !be) return true;
+    if(fs && be < fs) return false;
+    if(fe && bs > fe) return false;
+    return true;
+  }
+  
+  function getFilteredBills(){
+    return state.bills.filter(b=>{
+      if(billFilter.payer && b.payer !== billFilter.payer) return false;
+      if(!inRangeOverlap(b)) return false;
+      return true;
+    });
+  }
+  
+  function syncFilterUI(){
+    const sel = document.getElementById("filterPayer");
+    if(!sel) return;
+  
+    const cur = billFilter.payer || "";
+    sel.innerHTML = `<option value="">全部付款人</option>` +
+      state.people.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+    sel.value = cur;
+  
+    const f1 = document.getElementById("filterFrom");
+    const f2 = document.getElementById("filterTo");
+    if(f1) f1.value = billFilter.from || "";
+    if(f2) f2.value = billFilter.to || "";
+  }
+  
+  function bindFilterEventsOnce(){
+    const sel = document.getElementById("filterPayer");
+    const f1 = document.getElementById("filterFrom");
+    const f2 = document.getElementById("filterTo");
+    const clr = document.getElementById("btnFilterClear");
+    if(!sel || sel.dataset.bound) return; // 防重复绑定
+    sel.dataset.bound = "1";
+  
+    sel.addEventListener("change", ()=>{
+      billFilter.payer = sel.value;
+      saveBillFilter();
+      renderAll();
+    });
+    f1.addEventListener("change", ()=>{
+      billFilter.from = f1.value || "";
+      saveBillFilter();
+      renderAll();
+    });
+    f2.addEventListener("change", ()=>{
+      billFilter.to = f2.value || "";
+      saveBillFilter();
+      renderAll();
+    });
+    clr?.addEventListener("click", ()=>{
+      billFilter = { payer:"", from:"", to:"" };
+      saveBillFilter();
+      syncFilterUI();
+      toast("已清空筛选");
+      renderAll();
+    });
+  }  
   function renderBills(){
     const box=$("billsContainer");
     box.innerHTML="";
-    if(state.bills.length===0){
-      box.innerHTML=`<div class="hint">还没有账单，点底部“+账”添加。</div>`;
+    const bills = getFilteredBills();
+    if(bills.length===0){
+
+      if(state.bills.length===0){
+        box.innerHTML=`<div class="hint">还没有账单，点底部“+账”添加。</div>`;
+      }else{
+        box.innerHTML=`<div class="hint">没有符合筛选条件的账单。</div>`;
+      }
       return;
     }
       // ✅ 列表折叠视图：只显示 付款人/金额/人数/天数（点击可展开到卡片视图并定位）
@@ -1137,7 +1306,7 @@
       `;
       const tb = table.querySelector("tbody");
   
-      state.bills.forEach(b=>{
+      bills.forEach(b=>{
         const billDays = daysInclusive(b.start, b.end);
         const amountC = toCents(b.amount);
         const peopleCount = (b.participants||[]).length;
@@ -1170,34 +1339,40 @@
       box.appendChild(table);
       return;
     }
-    state.bills.forEach(b=>{
+    bills.forEach(b=>{
       const billDays=daysInclusive(b.start,b.end);
       const { amountC, totalPersonDays, alloc } = computeAllocCents(b);
 
     const card=document.createElement("div");
-    card.className="card";
+    card.className="card billCard";
     card.style.marginBottom="12px";
-    card.id = `bill-${b.id}`; // ✅ 用于列表视图点击后定位
+    card.id = `bill-${b.id}`;
+    
+    // ✅ 按付款人上色（没有付款人就用标题）
+    const [a1,a2] = accentForName(b.payer || b.title || "bill");
+    card.style.setProperty("--accent1", a1);
+    card.style.setProperty("--accent2", a2);
 
-
-      const payerOptions = state.people.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
-      const isOpen = expandedBills.has(b.id); // ✅ 默认不自动展开
+    const payerOptions = state.people.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+    const isOpen = expandedBills.has(b.id); // ✅ 默认不自动展开
 
 
       card.innerHTML = `
         <div class="bill-topline">
           <div>
-            <div style="font-weight:950">${escapeHtml(b.title||"未命名账单")}</div>
-            <div class="small muted" style="margin-top:4px">
-              金额：<span class="mono">$${centsToMoney(amountC)}</span> ·
-              日期：<span class="mono">${escapeHtml(b.start)}</span> ~ <span class="mono">${escapeHtml(b.end)}</span>（${billDays}天） ·
-              总人天：<span class="mono">${totalPersonDays}</span>
-            </div>
-      
-            <div class="row" style="margin-top:8px">
-              <span class="badge">付款人</span>
-              <select data-role="payer" style="min-width:160px">${payerOptions}</select>
-              <button class="secondary ghost" data-act="setAll">一键全程</button>
+            <div class="billCardHeaderGlow">
+              <div style="font-weight:950">${escapeHtml(b.title||"未命名账单")}</div>
+              <div class="small muted" style="margin-top:4px">
+                金额：<span class="mono">$${centsToMoney(amountC)}</span> ·
+                日期：<span class="mono">${escapeHtml(b.start)}</span> ~ <span class="mono">${escapeHtml(b.end)}</span>（${billDays}天） ·
+                总人天：<span class="mono">${totalPersonDays}</span>
+              </div>
+        
+              <div class="row" style="margin-top:8px">
+                <span class="badge">付款人</span>
+                <select data-role="payer" style="min-width:160px">${payerOptions}</select>
+                <button class="secondary ghost" data-act="setAll">一键全程</button>
+              </div>
             </div>
           </div>
       
@@ -1335,6 +1510,8 @@
     renderPeople();
     renderBills();
     renderSummary();
+    syncFilterUI();
+    bindFilterEventsOnce();
   }
 
   // ========= JSON 备份 =========
@@ -1647,6 +1824,7 @@
 </script>
 </body>
 </html>
+
 
 
 
