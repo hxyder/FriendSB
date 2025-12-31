@@ -1230,20 +1230,76 @@
     });
   }
   
-  function syncFilterUI(){
-    const sel = document.getElementById("filterPayer");
-    if(!sel) return;
-  
-    const cur = billFilter.payer || "";
-    sel.innerHTML = `<option value="">全部付款人</option>` +
-      state.people.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
-    sel.value = cur;
-  
-    const f1 = document.getElementById("filterFrom");
-    const f2 = document.getElementById("filterTo");
-    if(f1) f1.value = billFilter.from || "";
-    if(f2) f2.value = billFilter.to || "";
+function syncFilterUI(){
+  const sel = document.getElementById("filterPayer");
+  const f1  = document.getElementById("filterFrom");
+  const f2  = document.getElementById("filterTo");
+  const hint = document.getElementById("filterRangeHint");
+
+  if(!sel) return;
+
+  // 1) 付款人下拉：只列出“账单里出现过的付款人”
+  const payerSet = new Set(
+    state.bills.map(b => String(b.payer || "").trim()).filter(Boolean)
+  );
+  const payers = Array.from(payerSet).sort((a,b)=>a.localeCompare(b,"zh"));
+
+  // 若当前筛选 payer 不存在了，自动清空
+  if(billFilter.payer && !payerSet.has(billFilter.payer)){
+    billFilter.payer = "";
+    saveBillFilter();
   }
+
+  sel.innerHTML =
+    `<option value="">全部付款人</option>` +
+    payers.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+
+  sel.value = billFilter.payer || "";
+
+  // 2) 日期范围：只给“有值范围”（自动 min/max + 提示）
+  const dates = state.bills
+    .filter(b => b.start && b.end)
+    .map(b => ({ s: b.start, e: b.end }));
+
+  let minD = "", maxD = "";
+  for(const d of dates){
+    if(!minD || d.s < minD) minD = d.s;
+    if(!maxD || d.e > maxD) maxD = d.e;
+  }
+
+  if(f1 && f2){
+    if(minD && maxD){
+      f1.min = minD; f1.max = maxD;
+      f2.min = minD; f2.max = maxD;
+      if(hint) hint.textContent = `可筛选日期范围：${minD} ~ ${maxD}`;
+    }else{
+      f1.min = ""; f1.max = "";
+      f2.min = ""; f2.max = "";
+      if(hint) hint.textContent = "暂无可用日期范围（先添加带日期的账单）";
+    }
+
+    // 回填筛选值
+    f1.value = billFilter.from || "";
+    f2.value = billFilter.to || "";
+
+    // 如果筛选日期超出范围，自动清空
+    if(minD && maxD){
+      let changed = false;
+      if(billFilter.from && (billFilter.from < minD || billFilter.from > maxD)){
+        billFilter.from = ""; changed = true;
+      }
+      if(billFilter.to && (billFilter.to < minD || billFilter.to > maxD)){
+        billFilter.to = ""; changed = true;
+      }
+      if(changed){
+        saveBillFilter();
+        f1.value = billFilter.from || "";
+        f2.value = billFilter.to || "";
+      }
+    }
+  }
+}
+
   
   function bindFilterEventsOnce(){
     const sel = document.getElementById("filterPayer");
@@ -1824,6 +1880,7 @@
 </script>
 </body>
 </html>
+
 
 
 
