@@ -246,7 +246,29 @@
       color:var(--muted);
       margin-top:4px;
     }
-
+  /* ===== Tabs for 账单/汇总/结算 ===== */
+  .tabs{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-bottom:10px;
+  }
+  .tabBtn{
+    padding:10px 12px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background: rgba(255,255,255,.85);
+    color: var(--text);
+    font-weight:900;
+    cursor:pointer;
+    box-shadow:none;
+  }
+  .tabBtn.active{
+    border-color: rgba(75,107,255,.35);
+    background: rgba(75,107,255,.10);
+  }
+  .tabPanel{ display:none; }
+  .tabPanel.active{ display:block; }
   </style>
 </head>
 
@@ -290,43 +312,56 @@
     </div>
 
     <div class="card">
-      <div class="row" style="justify-content:space-between; align-items:center">
-        <h2 style="margin:0">账单列表</h2>
-        <div class="row" style="gap:8px">
-          <button class="secondary ghost" id="btnBillsCompact">折叠列表</button>
-          <button class="secondary ghost" id="btnBillsExpand">展开列表</button>
-        </div>
+    
+      <!-- Tabs -->
+      <div class="tabs" id="mainTabs">
+        <button class="tabBtn" data-tab="bills">账单列表</button>
+        <button class="tabBtn" data-tab="summary">每人汇总</button>
+        <button class="tabBtn" data-tab="settle">最终结算</button>
       </div>
-      <div id="billsContainer"></div>
-
-      <div class="hr"></div>
-
-      <h2>每人汇总（应付/实付/净额）</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>人员</th>
-            <th class="right">应付</th>
-            <th class="right">实付</th>
-            <th class="right">净额</th>
-          </tr>
-        </thead>
-        <tbody id="summaryBody"></tbody>
-      </table>
-
-      <div class="hr"></div>
-
-      <h2>最终结算（抵消后最少转账）</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>付款人</th>
-            <th>收款人</th>
-            <th class="right">金额</th>
-          </tr>
-        </thead>
-        <tbody id="settleBody"></tbody>
-      </table>
+    
+      <!-- Panel: Bills -->
+      <div class="tabPanel" id="panelBills">
+        <div class="row" style="justify-content:space-between; align-items:center">
+          <h2 style="margin:0">账单列表</h2>
+          <div class="row" style="gap:8px">
+            <button class="secondary ghost" id="btnBillsCompact">折叠列表</button>
+            <button class="secondary ghost" id="btnBillsExpand">展开列表</button>
+          </div>
+        </div>
+        <div id="billsContainer"></div>
+      </div>
+    
+      <!-- Panel: Summary -->
+      <div class="tabPanel" id="panelSummary">
+        <h2>每人汇总（应付/实付/净额）</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>人员</th>
+              <th class="right">应付</th>
+              <th class="right">实付</th>
+              <th class="right">净额</th>
+            </tr>
+          </thead>
+          <tbody id="summaryBody"></tbody>
+        </table>
+      </div>
+    
+      <!-- Panel: Settlement -->
+      <div class="tabPanel" id="panelSettle">
+        <h2>最终结算（抵消后最少转账）</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>付款人</th>
+              <th>收款人</th>
+              <th class="right">金额</th>
+            </tr>
+          </thead>
+          <tbody id="settleBody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
@@ -504,6 +539,36 @@
   import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js';
   import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js';
 
+
+  // ===== Tabs logic =====
+  const TAB_KEY = "aa_main_tab_v1";
+  let activeTab = localStorage.getItem(TAB_KEY) || "bills";
+  
+  function setActiveTab(tab){
+    activeTab = tab;
+    localStorage.setItem(TAB_KEY, tab);
+  
+    // buttons
+    document.querySelectorAll("#mainTabs .tabBtn").forEach(btn=>{
+      btn.classList.toggle("active", btn.dataset.tab === tab);
+    });
+  
+    // panels
+    const map = {
+      bills: document.getElementById("panelBills"),
+      summary: document.getElementById("panelSummary"),
+      settle: document.getElementById("panelSettle"),
+    };
+    Object.entries(map).forEach(([k, el])=>{
+      if(el) el.classList.toggle("active", k === tab);
+    });
+  }
+  
+  // bind clicks
+  document.querySelectorAll("#mainTabs .tabBtn").forEach(btn=>{
+    btn.addEventListener("click", ()=> setActiveTab(btn.dataset.tab));
+  });
+    
   // ========= 1) 把你的 Firebase Web config 粘贴到这里 =========
   const firebaseConfig = {
     apiKey: "AIzaSyDhLRcOhh1eTIGHZ8aSZdBZmPH9PuB_P4k",
@@ -1438,6 +1503,7 @@
   // ========= 初始化 =========
   loadLocal();
   renderAll();
+  setActiveTab(activeTab);
   document.getElementById("btnBillsCompact")?.addEventListener("click", ()=>{
     billsCompact = true;
     persistBillsCompact();
@@ -1476,6 +1542,7 @@
 </script>
 </body>
 </html>
+
 
 
 
