@@ -1158,8 +1158,6 @@
         tr.addEventListener("click", ()=>{
           billsCompact = false;
           persistBillsCompact();
-          expandedBills.add(b.id);
-          persistExpanded();
           renderAll();
           setTimeout(()=>{
             document.getElementById(`bill-${b.id}`)?.scrollIntoView({behavior:"smooth", block:"start"});
@@ -1183,8 +1181,8 @@
 
 
       const payerOptions = state.people.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
-      const openByDefault = !isMobile();
-      const isOpen = expandedBills.has(b.id) || openByDefault;
+      const isOpen = expandedBills.has(b.id); // ✅ 默认不自动展开
+
 
       card.innerHTML = `
         <div class="bill-topline">
@@ -1649,6 +1647,7 @@
 </script>
 </body>
 </html>
+
 
 
 
