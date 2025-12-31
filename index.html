@@ -1131,6 +1131,12 @@
   // ========= 弹窗 =========
   function openModal(which){
     if(which==="person") $("modalPerson").style.display="flex";
+    if(which==="ai"){
+      document.getElementById("modalAI").style.display="flex";
+      refreshAiTokenStatus();
+      renderAiMsgs();
+    }
+
     if(which==="bill"){
       if(state.people.length===0){ toast("先添加至少 1 个人"); openModal("person"); return; }
       editingBillId = null; // ✅ 默认进入创建模式
@@ -2093,6 +2099,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
