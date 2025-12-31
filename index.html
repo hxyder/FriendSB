@@ -5,247 +5,349 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>牛逼人分牛逼钱·（6位口令加密）</title>
   <style>
-    :root{
-      --bg:#f6f7ff; --card:#ffffff; --text:#12162a; --muted:#5b6b96;
-      --line:rgba(18,22,42,.10);
-      --pri:#4b6bff; --pri2:#a24bff;
-      --good:#0a9b4a; --bad:#d81b60;
-      --shadow:0 12px 28px rgba(18,22,42,.12);
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC","Microsoft YaHei", Arial;
-      color:var(--text);
-      background:
-        radial-gradient(1100px 700px at 15% 0%, rgba(75,107,255,.18), transparent 60%),
-        radial-gradient(900px 650px at 95% 10%, rgba(162,75,255,.14), transparent 60%),
-        linear-gradient(180deg, rgba(255,255,255,.75), rgba(246,247,255,1)),
-        var(--bg);
-    }
-    header{
-      position:sticky; top:0; z-index:10;
-      background:rgba(255,255,255,.80);
-      backdrop-filter: blur(10px);
-      border-bottom:1px solid var(--line);
-    }
-    .top{
-      max-width:1100px; margin:0 auto; padding:12px 14px;
-      display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
-    }
-    .title{font-weight:900}
-    .sub{font-size:12px; color:var(--muted); margin-top:4px}
-    .rightTop{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end}
-    .badge{
-      font-size:11px; color:var(--muted);
-      padding:6px 10px; border-radius:999px;
-      border:1px solid var(--line); background:rgba(255,255,255,.75);
-      white-space:nowrap;
-    }
+  :root{
+    --bg:#f6f7ff;
+    --card:#ffffff;
+    --text:#12162a;
+    --muted:#5b6b96;
+    --line:rgba(18,22,42,.10);
 
-    .wrap{max-width:1100px; margin:0 auto; padding:14px 14px 96px}
-    .grid{display:grid; gap:12px}
-    @media(min-width:980px){ .grid{grid-template-columns: 360px 1fr;} }
+    /* Brand accents */
+    --pri:#3b5cff;     /* blue */
+    --pri2:#b24bff;    /* purple */
+    --cyan:#12c2ff;    /* cyan */
+    --orange:#ff9f2f;  /* orange */
+    --green:#14b86a;   /* green */
+    --pink:#ff3b7a;    /* pink */
 
-    .card{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:18px;
-      padding:12px;
-      box-shadow:var(--shadow);
-    }
-    h2{margin:0 0 10px; font-size:14px; color:#1b2140}
-    .muted{color:var(--muted)}
-    .small{font-size:12px}
-    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace}
-    .hr{height:1px; background:var(--line); margin:12px 0}
+    --good:#14b86a;
+    --bad:#ff3b7a;
 
-    table{width:100%; border-collapse:collapse; overflow:hidden; border-radius:14px}
-    th, td{padding:10px 10px; border-bottom:1px solid var(--line); font-size:12px; text-align:left; vertical-align:top}
-    th{color:#1b2140; background: rgba(75,107,255,.06)}
-    .right{text-align:right}
-    .ok{color:var(--good); font-weight:900}
-    .no{color:var(--bad); font-weight:900}
+    --shadow:0 12px 28px rgba(18,22,42,.12);
+  }
 
-    .pills{display:flex; flex-wrap:wrap; gap:8px}
-    .pill{
-      display:inline-flex; align-items:center; gap:8px;
-      padding:8px 10px; border-radius:999px;
-      border:1px solid var(--line);
-      background:rgba(75,107,255,.05);
-      font-size:12px;
-    }
-    .pill b{font-weight:900}
-    .pill .x{cursor:pointer; opacity:.75}
-    .pill .x:hover{opacity:1}
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC","Microsoft YaHei", Arial;
+    color:var(--text);
+    background:
+      radial-gradient(1100px 700px at 12% -6%, rgba(59,92,255,.24), transparent 60%),
+      radial-gradient(900px 650px at 98% 4%, rgba(178,75,255,.20), transparent 60%),
+      radial-gradient(900px 650px at 45% 110%, rgba(18,194,255,.14), transparent 60%),
+      linear-gradient(180deg, rgba(255,255,255,.80), rgba(246,247,255,1)),
+      var(--bg);
+  }
 
-    button{
-      border:none; cursor:pointer; color:white;
-      border-radius:14px; padding:10px 12px;
-      background: linear-gradient(90deg, rgba(75,107,255,.95), rgba(162,75,255,.92));
-      font-weight:900;
-      box-shadow: 0 8px 18px rgba(75,107,255,.18);
-    }
-    button.secondary{
-      color:var(--text);
-      background: rgba(255,255,255,.90);
-      border:1px solid var(--line);
-      font-weight:800;
-      box-shadow:none;
-    }
-    button.danger{
-      color:var(--bad);
-      background: rgba(216,27,96,.08);
-      border:1px solid rgba(216,27,96,.25);
-      font-weight:900;
-      box-shadow:none;
-    }
-    button.ghost{
-      color:var(--text);
-      background: transparent;
-      border:1px solid var(--line);
-      font-weight:800;
-      box-shadow:none;
-    }
+  header{
+    position:sticky; top:0; z-index:10;
+    background:rgba(255,255,255,.82);
+    backdrop-filter: blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .top{
+    max-width:1100px; margin:0 auto; padding:12px 14px;
+    display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  }
+  .title{font-weight:950}
+  .sub{font-size:12px; color:var(--muted); margin-top:4px}
+  .rightTop{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end}
 
-    .bottomBar{
-      position:fixed; left:0; right:0; bottom:0; z-index:20;
-      background:rgba(255,255,255,.86);
-      backdrop-filter: blur(10px);
-      border-top:1px solid var(--line);
-    }
-    .bottomInner{
-      max-width:1100px; margin:0 auto;
-      padding:10px 12px;
-      display:flex; gap:10px;
-    }
-    .bottomInner button{flex:1; padding:12px 10px}
+  .badge{
+    font-size:11px;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid rgba(59,92,255,.22);
+    background: linear-gradient(90deg, rgba(59,92,255,.10), rgba(178,75,255,.08));
+    color:#1b2140;
+    white-space:nowrap;
+  }
 
-    /* Modal center */
-    .modalMask{
-      position:fixed; inset:0; z-index:30;
-      background: rgba(18,22,42,.35);
-      display:none; align-items:center; justify-content:center;
-      padding:14px;
-    }
-    .modal{
-      width:min(720px, 100%);
-      max-height: 86vh;
-      overflow:auto;
-      background: rgba(255,255,255,.92);
-      border:1px solid var(--line);
-      border-radius:18px;
-      box-shadow: 0 24px 60px rgba(18,22,42,.22);
-    }
-    .modalHeader{
-      padding:12px;
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-      border-bottom:1px solid var(--line);
-      position:sticky; top:0;
-      background: rgba(255,255,255,.95);
-      backdrop-filter: blur(8px);
-    }
-    .modalTitle{font-weight:950}
-    .modalBody{padding:12px}
-    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-    label{font-size:12px; color:var(--muted)}
-    input, select, textarea{
-      border-radius:14px; border:1px solid var(--line);
-      background: rgba(255,255,255,.98);
-      color:var(--text);
-      padding:11px 10px;
-      outline:none;
-      width:100%;
-    }
-    input[type="date"]{max-width:240px}
-    input[type="number"]{max-width:240px}
-    .col2{display:grid; gap:10px}
-    @media(min-width:640px){ .col2{grid-template-columns:1fr 1fr;} }
+  .wrap{max-width:1100px; margin:0 auto; padding:14px 14px 96px}
+  .grid{display:grid; gap:12px}
+  @media(min-width:980px){ .grid{grid-template-columns: 360px 1fr;} }
 
-    .checkList{display:grid; grid-template-columns:1fr; gap:8px; margin-top:8px}
-    @media(min-width:640px){ .checkList{grid-template-columns:1fr 1fr;} }
-    .checkItem{
-      display:flex; align-items:center; gap:10px;
-      padding:10px; border-radius:14px;
-      border:1px solid var(--line);
-      background: rgba(75,107,255,.05);
-    }
-    .checkItem input{width:auto}
-    .hint{font-size:12px; color:var(--muted); line-height:1.6}
+  .card{
+    background:var(--card);
+    border:1px solid rgba(18,22,42,.10);
+    border-radius:18px;
+    padding:12px;
+    box-shadow:var(--shadow);
+  }
 
-    .toast{
-      position:fixed; left:50%; transform:translateX(-50%);
-      bottom:86px; z-index:50;
-      background:rgba(18,22,42,.88);
-      color:white;
-      border:1px solid rgba(255,255,255,.18);
-      padding:10px 12px;
-      border-radius:999px;
-      display:none;
-      font-size:12px;
-      max-width:min(92vw, 560px);
-      overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
-    }
-    .kbd{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
-      font-size:12px;
-      padding:2px 8px;
-      border-radius:999px;
-      background: rgba(18,22,42,.06);
-      border:1px solid var(--line);
-    }
-    /* ===== Bill collapse + prettier table ===== */
-    .bill-topline{
-      display:flex;
-      justify-content:space-between;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:flex-start;
-    }
-    .bill-actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
-    .bill-toggle{
-      padding:8px 10px;
-      border-radius:12px;
-    }
-    .bill-body{
-      margin-top:10px;
-      display:none;
-    }
-    .bill-body.open{display:block;}
-    
-    .bill-table{
-      width:100%;
-      border-collapse:separate;
-      border-spacing:0;
-      overflow:hidden;
-      border-radius:14px;
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.95);
-    }
-    .bill-table thead th{
-      background: rgba(75,107,255,.07);
-      border-bottom:1px solid var(--line);
-    }
-    .bill-table th, .bill-table td{
-      padding:10px 10px;
-      font-size:12px;
-    }
-    .bill-table tbody tr:nth-child(even){
-      background: rgba(75,107,255,.03);
-    }
-    .bill-days-input{
-      width:100px;
-      text-align:right;
-      border-radius:12px;
-      padding:9px 10px;
-    }
-    .bill-suggest{
-      font-size:11px;
-      color:var(--muted);
-      margin-top:4px;
-    }
+  h2{margin:0 0 10px; font-size:14px; color:#1b2140}
+  .muted{color:var(--muted)}
+  .small{font-size:12px}
+  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace}
+  .hr{height:1px; background:var(--line); margin:12px 0}
+
+  table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    overflow:hidden;
+    border-radius:14px;
+    border:1px solid rgba(18,22,42,.10);
+    background: rgba(255,255,255,.92);
+  }
+  th, td{
+    padding:10px 10px;
+    border-bottom:1px solid rgba(18,22,42,.08);
+    font-size:12px;
+    text-align:left;
+    vertical-align:top;
+  }
+  th{
+    color:#1b2140;
+    background: linear-gradient(90deg, rgba(59,92,255,.10), rgba(178,75,255,.08));
+  }
+  tbody tr:nth-child(even){ background: rgba(59,92,255,.03); }
+  .right{text-align:right}
+  .ok{color:var(--good); font-weight:950}
+  .no{color:var(--bad); font-weight:950}
+
+  .pills{display:flex; flex-wrap:wrap; gap:8px}
+  .pill{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:8px 10px; border-radius:999px;
+    border:1px solid rgba(59,92,255,.18);
+    background: linear-gradient(90deg, rgba(59,92,255,.08), rgba(18,194,255,.06));
+    font-size:12px;
+  }
+  .pill b{font-weight:950}
+  .pill .x{cursor:pointer; opacity:.75}
+  .pill .x:hover{opacity:1}
+
+  /* ===== Buttons base + interaction ===== */
+  button{
+    border:none;
+    cursor:pointer;
+    color:white;
+    border-radius:14px;
+    padding:10px 12px;
+    font-weight:950;
+    background: linear-gradient(90deg, rgba(59,92,255,.98), rgba(178,75,255,.96));
+    box-shadow: 0 10px 22px rgba(59,92,255,.22);
+    transition: transform .08s ease, filter .12s ease, box-shadow .12s ease;
+  }
+  button:hover{
+    filter: brightness(1.04);
+    box-shadow: 0 12px 26px rgba(59,92,255,.26);
+  }
+  button:active{
+    transform: translateY(1px);
+    filter: brightness(.98);
+  }
+
+  /* Secondary: light but still colorful */
+  button.secondary{
+    color:var(--text);
+    background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.86));
+    border:1px solid rgba(18,22,42,.12);
+    font-weight:900;
+    box-shadow: 0 10px 22px rgba(18,22,42,.06);
+  }
+  button.secondary:hover{
+    box-shadow: 0 12px 26px rgba(18,22,42,.08);
+  }
+
+  /* Ghost: subtle colored outline on hover */
+  button.ghost{
+    color:var(--text);
+    background: rgba(255,255,255,.55);
+    border:1px solid rgba(18,22,42,.14);
+    font-weight:900;
+    box-shadow:none;
+  }
+  button.ghost:hover{
+    background: rgba(59,92,255,.08);
+    border-color: rgba(59,92,255,.28);
+  }
+
+  /* Danger: vivid */
+  button.danger{
+    color:white;
+    background: linear-gradient(90deg, rgba(255,59,122,.98), rgba(255,159,47,.92));
+    border:none;
+    font-weight:950;
+    box-shadow: 0 10px 22px rgba(255,59,122,.18);
+  }
+  button.danger:hover{
+    box-shadow: 0 12px 26px rgba(255,59,122,.22);
+  }
+
+  /* Bottom bar */
+  .bottomBar{
+    position:fixed; left:0; right:0; bottom:0; z-index:20;
+    background:rgba(255,255,255,.90);
+    backdrop-filter: blur(10px);
+    border-top:1px solid rgba(18,22,42,.10);
+  }
+  .bottomInner{
+    max-width:1100px; margin:0 auto;
+    padding:10px 12px;
+    display:flex; gap:10px;
+  }
+  .bottomInner button{
+    flex:1;
+    padding:12px 10px;
+    border-radius:16px;
+  }
+
+  /* ===== Function-colored buttons (no new classes needed) =====
+     By targeting your existing bottom buttons order:
+     1) +人  2) +账  3) 协作  4) 导出
+  */
+  .bottomInner button:nth-child(1){
+    background: linear-gradient(90deg, rgba(18,194,255,.98), rgba(59,92,255,.92));
+    box-shadow: 0 10px 22px rgba(18,194,255,.20);
+    color:white;
+  }
+  .bottomInner button:nth-child(2){
+    background: linear-gradient(90deg, rgba(178,75,255,.98), rgba(59,92,255,.92));
+    box-shadow: 0 10px 22px rgba(178,75,255,.20);
+    color:white;
+  }
+  .bottomInner button:nth-child(3){
+    /* your 3rd is secondary now, make it still colorful */
+    background: linear-gradient(90deg, rgba(255,159,47,.18), rgba(255,255,255,.86));
+    border:1px solid rgba(255,159,47,.30);
+    color: #1b2140;
+    box-shadow: 0 10px 22px rgba(255,159,47,.10);
+  }
+  .bottomInner button:nth-child(4){
+    background: linear-gradient(90deg, rgba(20,184,106,.18), rgba(255,255,255,.86));
+    border:1px solid rgba(20,184,106,.28);
+    color: #1b2140;
+    box-shadow: 0 10px 22px rgba(20,184,106,.10);
+  }
+
+  /* Modal center */
+  .modalMask{
+    position:fixed; inset:0; z-index:30;
+    background: rgba(18,22,42,.35);
+    display:none; align-items:center; justify-content:center;
+    padding:14px;
+  }
+  .modal{
+    width:min(720px, 100%);
+    max-height: 86vh;
+    overflow:auto;
+    background: rgba(255,255,255,.92);
+    border:1px solid rgba(18,22,42,.10);
+    border-radius:18px;
+    box-shadow: 0 24px 60px rgba(18,22,42,.22);
+  }
+  .modalHeader{
+    padding:12px;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    border-bottom:1px solid rgba(18,22,42,.10);
+    position:sticky; top:0;
+    background: rgba(255,255,255,.95);
+    backdrop-filter: blur(8px);
+  }
+  .modalTitle{font-weight:950}
+  .modalBody{padding:12px}
+  .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  label{font-size:12px; color:var(--muted)}
+  input, select, textarea{
+    border-radius:14px; border:1px solid rgba(18,22,42,.12);
+    background: rgba(255,255,255,.98);
+    color:var(--text);
+    padding:11px 10px;
+    outline:none;
+    width:100%;
+    transition: box-shadow .12s ease, border-color .12s ease;
+  }
+  input:focus, select:focus, textarea:focus{
+    border-color: rgba(59,92,255,.45);
+    box-shadow: 0 0 0 4px rgba(59,92,255,.12);
+  }
+  input[type="date"]{max-width:240px}
+  input[type="number"]{max-width:240px}
+  .col2{display:grid; gap:10px}
+  @media(min-width:640px){ .col2{grid-template-columns:1fr 1fr;} }
+
+  .checkList{display:grid; grid-template-columns:1fr; gap:8px; margin-top:8px}
+  @media(min-width:640px){ .checkList{grid-template-columns:1fr 1fr;} }
+  .checkItem{
+    display:flex; align-items:center; gap:10px;
+    padding:10px; border-radius:14px;
+    border:1px solid rgba(59,92,255,.16);
+    background: linear-gradient(90deg, rgba(59,92,255,.08), rgba(18,194,255,.06));
+  }
+  .checkItem input{width:auto}
+  .hint{font-size:12px; color:var(--muted); line-height:1.6}
+
+  .toast{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:86px; z-index:50;
+    background:rgba(18,22,42,.92);
+    color:white;
+    border:1px solid rgba(255,255,255,.22);
+    padding:10px 12px;
+    border-radius:999px;
+    display:none;
+    font-size:12px;
+    max-width:min(92vw, 560px);
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  .kbd{
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+    font-size:12px;
+    padding:2px 8px;
+    border-radius:999px;
+    background: rgba(18,22,42,.06);
+    border:1px solid rgba(18,22,42,.10);
+  }
+
+  /* ===== Bill collapse + prettier table ===== */
+  .bill-topline{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:flex-start;
+  }
+  .bill-actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .bill-toggle{
+    padding:8px 10px;
+    border-radius:999px;
+  }
+  .bill-body{ margin-top:10px; display:none; }
+  .bill-body.open{ display:block; }
+
+  .bill-table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    overflow:hidden;
+    border-radius:14px;
+    border:1px solid rgba(18,22,42,.10);
+    background:rgba(255,255,255,.95);
+  }
+  .bill-table thead th{
+    background: linear-gradient(90deg, rgba(59,92,255,.10), rgba(178,75,255,.08));
+    border-bottom:1px solid rgba(18,22,42,.10);
+  }
+  .bill-table th, .bill-table td{ padding:10px 10px; font-size:12px; }
+  .bill-table tbody tr:nth-child(even){ background: rgba(59,92,255,.03); }
+
+  .bill-days-input{
+    width:100px;
+    text-align:right;
+    border-radius:12px;
+    padding:9px 10px;
+  }
+  .bill-suggest{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:4px;
+  }
+
   /* ===== Tabs for 账单/汇总/结算 ===== */
   .tabs{
     display:flex;
@@ -256,20 +358,25 @@
   .tabBtn{
     padding:10px 12px;
     border-radius:999px;
-    border:1px solid var(--line);
+    border:1px solid rgba(18,22,42,.14);
     background: rgba(255,255,255,.85);
     color: var(--text);
-    font-weight:900;
+    font-weight:950;
     cursor:pointer;
     box-shadow:none;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  .tabBtn:hover{
+    background: rgba(59,92,255,.08);
+    border-color: rgba(59,92,255,.28);
   }
   .tabBtn.active{
-    border-color: rgba(75,107,255,.35);
-    background: rgba(75,107,255,.10);
+    border-color: rgba(59,92,255,.35);
+    background: linear-gradient(90deg, rgba(59,92,255,.14), rgba(178,75,255,.10));
   }
   .tabPanel{ display:none; }
   .tabPanel.active{ display:block; }
-  </style>
+</style>
 </head>
 
 <body>
@@ -1542,6 +1649,7 @@
 </script>
 </body>
 </html>
+
 
 
 
