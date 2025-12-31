@@ -722,6 +722,36 @@
     ["#3b5cff","#14b86a"], // blue->green
   ];
   
+  const WORKER_BASE = "https://derfriendtrip.hxy94045.workers.dev";
+  const AI_TOKEN_KEY = "aa_ai_app_token_v1";
+  
+  function getAiToken(){
+    return localStorage.getItem(AI_TOKEN_KEY) || "";
+  }
+  
+  function setAiToken(t){
+    localStorage.setItem(AI_TOKEN_KEY, t);
+  }
+  
+  async function callAI(messages){
+    if(!roomId || !passcode){ throw new Error("请先加入房间并输入口令"); }
+    const appToken = getAiToken();
+    if(!appToken){ throw new Error("请先在本机设置 APP_TOKEN"); }
+  
+    const r = await fetch(`${WORKER_BASE}/ai`, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-APP-TOKEN": appToken,
+      },
+      body: JSON.stringify({ roomId, passcode, messages })
+    });
+  
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(data.error || "AI请求失败");
+    return data;
+  }
+  
   function hashStr(s){
     s = String(s||"");
     let h = 2166136261;
@@ -1880,6 +1910,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
