@@ -290,7 +290,13 @@
     </div>
 
     <div class="card">
-      <h2>账单列表</h2>
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <h2 style="margin:0">账单列表</h2>
+        <div class="row" style="gap:8px">
+          <button class="secondary ghost" id="btnBillsCompact">折叠列表</button>
+          <button class="secondary ghost" id="btnBillsExpand">展开列表</button>
+        </div>
+      </div>
       <div id="billsContainer"></div>
 
       <div class="hr"></div>
@@ -314,7 +320,8 @@
       <table>
         <thead>
           <tr>
-            <th>谁付给谁</th>
+            <th>付款人</th>
+            <th>收款人</th>
             <th class="right">金额</th>
           </tr>
         </thead>
@@ -922,7 +929,18 @@
   function persistExpanded(){
     localStorage.setItem(EXPAND_KEY, JSON.stringify([...expandedBills]));
   }
+  
+  const BILLS_VIEW_KEY = "aa_bills_view_compact_v1";
+  let billsCompact = false;
+  try{
+    billsCompact = JSON.parse(localStorage.getItem(BILLS_VIEW_KEY) || "false");
+  }catch(e){ billsCompact = false; }
+  
+  function persistBillsCompact(){
+    localStorage.setItem(BILLS_VIEW_KEY, JSON.stringify(!!billsCompact));
+  }
 
+  
   function renderBills(){
     const box=$("billsContainer");
     box.innerHTML="";
@@ -930,13 +948,67 @@
       box.innerHTML=`<div class="hint">还没有账单，点底部“+账”添加。</div>`;
       return;
     }
+      // ✅ 列表折叠视图：只显示 付款人/金额/人数/天数（点击可展开到卡片视图并定位）
+    if(billsCompact){
+      const table = document.createElement("table");
+      table.className = "bill-table";
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th>付款人</th>
+            <th class="right">金额</th>
+            <th class="right">人数</th>
+            <th class="right">天数</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      `;
+      const tb = table.querySelector("tbody");
+  
+      state.bills.forEach(b=>{
+        const billDays = daysInclusive(b.start, b.end);
+        const amountC = toCents(b.amount);
+        const peopleCount = (b.participants||[]).length;
+  
+        const tr = document.createElement("tr");
+        tr.style.cursor = "pointer";
+        tr.innerHTML = `
+          <td>
+            <div style="font-weight:900">${escapeHtml(b.payer || "")}</div>
+            <div class="small muted">${escapeHtml(b.title||"未命名账单")}</div>
+          </td>
+          <td class="right mono">$${centsToMoney(amountC)}</td>
+          <td class="right mono">${peopleCount}</td>
+          <td class="right mono">${billDays}</td>
+        `;
+  
+        // 点击行：切回卡片视图，并让该账单默认展开 + 滚动定位
+        tr.addEventListener("click", ()=>{
+          billsCompact = false;
+          persistBillsCompact();
+          expandedBills.add(b.id);
+          persistExpanded();
+          renderAll();
+          setTimeout(()=>{
+            document.getElementById(`bill-${b.id}`)?.scrollIntoView({behavior:"smooth", block:"start"});
+          }, 0);
+        });
+  
+        tb.appendChild(tr);
+      });
+  
+      box.appendChild(table);
+      return;
+    }
     state.bills.forEach(b=>{
       const billDays=daysInclusive(b.start,b.end);
       const { amountC, totalPersonDays, alloc } = computeAllocCents(b);
 
-      const card=document.createElement("div");
-      card.className="card";
-      card.style.marginBottom="12px";
+    const card=document.createElement("div");
+    card.className="card";
+    card.style.marginBottom="12px";
+    card.id = `bill-${b.id}`; // ✅ 用于列表视图点击后定位
+
 
       const payerOptions = state.people.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
       const openByDefault = !isMobile();
@@ -1075,12 +1147,15 @@
     const sb=$("settleBody");
     sb.innerHTML="";
     if(transfers.length===0){
-      sb.innerHTML=`<tr><td class="muted" colspan="2">暂无需要转账</td></tr>`;
+      sb.innerHTML=`<tr><td class="muted" colspan="3">暂无需要转账</td></tr>`;
     }else{
       transfers.forEach(t=>{
         const tr=document.createElement("tr");
-        tr.innerHTML=`<td><b>${escapeHtml(t.from)}</b> → <b>${escapeHtml(t.to)}</b></td>
-                      <td class="right mono">$${centsToMoney(t.amountC)}</td>`;
+          tr.innerHTML=`
+            <td style="font-weight:900">${escapeHtml(t.from)}</td>
+            <td style="font-weight:900">${escapeHtml(t.to)}</td>
+            <td class="right mono">$${centsToMoney(t.amountC)}</td>
+          `;
         sb.appendChild(tr);
       });
     }
@@ -1363,6 +1438,19 @@
   // ========= 初始化 =========
   loadLocal();
   renderAll();
+  document.getElementById("btnBillsCompact")?.addEventListener("click", ()=>{
+    billsCompact = true;
+    persistBillsCompact();
+    toast("已折叠为列表视图");
+    renderAll();
+  });
+  
+  document.getElementById("btnBillsExpand")?.addEventListener("click", ()=>{
+    billsCompact = false;
+    persistBillsCompact();
+    toast("已展开为卡片视图");
+    renderAll();
+  });
 
   // URL 带 room：自动打开分享弹窗并填好 room
   const urlRoom = getRoomFromUrl();
@@ -1388,5 +1476,6 @@
 </script>
 </body>
 </html>
+
 
 
