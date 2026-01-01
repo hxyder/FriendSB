@@ -246,6 +246,12 @@
     color: #1b2140;
     box-shadow: 0 10px 22px rgba(20,184,106,.10);
   }
+  .bottomInner button:nth-child(5){
+    background: linear-gradient(90deg, rgba(255,59,122,.18), rgba(255,255,255,.86));
+    border:1px solid rgba(255,59,122,.30);
+    color:#1b2140;
+    box-shadow: 0 10px 22px rgba(255,59,122,.10);
+  }
 
   /* Modal center */
   .modalMask{
@@ -562,6 +568,7 @@
     <button onclick="openModal('bill')">+ 账</button>
     <button class="secondary" onclick="openModal('share')">协作</button>
     <button class="secondary" onclick="exportJSON()">导出</button>
+    <button class="secondary" onclick="openAiEntry()">AI</button>
   </div>
 </div>
 
@@ -768,6 +775,32 @@
       </div>
 
       <div class="hint" id="aiHint" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>
+  
+<!-- Modal: AI Settings -->
+<div class="modalMask" id="modalAISettings">
+  <div class="modal">
+    <div class="modalHeader">
+      <div class="modalTitle">AI 设置（仅本机）</div>
+      <button class="ghost" onclick="closeModal('aiSettings')">关闭</button>
+    </div>
+    <div class="modalBody">
+      <div class="hint" style="margin-bottom:10px">
+        - APP_TOKEN 只保存在你本机浏览器（localStorage），不会同步到 Firebase。<br/>
+        - 必须先加入房间并输入 6 位口令，才能调用 AI。
+      </div>
+
+      <label>APP_TOKEN（本机保存）</label>
+      <input id="aiTokenInput" type="password" placeholder="粘贴你的 APP_TOKEN" />
+      <div class="hint" id="aiTokenStatus" style="margin-top:6px"></div>
+
+      <div class="row" style="margin-top:12px">
+        <button class="secondary" onclick="saveAiToken()">保存</button>
+        <button class="danger" onclick="clearAiToken()">清除</button>
+        <button onclick="openModal('ai')">打开 AI 聊天</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1136,7 +1169,10 @@
       refreshAiTokenStatus();
       renderAiMsgs();
     }
-
+    if(which==="aiSettings"){
+      document.getElementById("modalAISettings").style.display="flex";
+      refreshAiTokenStatus();
+    }
     if(which==="bill"){
       if(state.people.length===0){ toast("先添加至少 1 个人"); openModal("person"); return; }
       editingBillId = null; // ✅ 默认进入创建模式
@@ -1162,9 +1198,27 @@
       $("modalShare").style.display="flex";
     }
   }
+  function openAiEntry(){
+  // 必须先加入房间 + 有 6 位口令
+  if(!roomId || !/^\d{6}$/.test(passcode||"")){
+    toast("请先在“协作”加入房间并输入 6 位口令");
+    openModal("share");
+    return;
+  }
+  // 没 token：先去设置
+  if(!getAiToken()){
+    openModal("aiSettings");
+    return;
+  }
+  // 有 token：直接进聊天
+  openModal("ai");
+}
+window.openAiEntry = openAiEntry;
+
   function closeModal(which){
     if(which==="person") $("modalPerson").style.display="none";
     if(which==="ai") document.getElementById("modalAI").style.display="none";
+    if(which==="aiSettings") document.getElementById("modalAISettings").style.display="none";
     if(which==="bill"){
       // ✅ 清理编辑状态（新增）
       editingBillId = null;
@@ -2056,7 +2110,7 @@ function syncFilterUI(){
   window.clearAiToken = clearAiToken;
   window.seedAiContext = seedAiContext;
   window.sendAi = sendAi;
-
+  window.openAiEntry = openAiEntry;
   // ========= 初始化 =========
   loadLocal();
   renderAll();
@@ -2095,10 +2149,12 @@ function syncFilterUI(){
   }
 
   refreshCollabUI();
+  refreshAiTokenStatus();
 
 </script>
 </body>
 </html>
+
 
 
 
