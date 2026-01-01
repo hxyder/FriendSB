@@ -1287,66 +1287,105 @@ window.openAiEntry = openAiEntry;
   let currentAppliedInvoiceId = null;
   
   // 懒加载 Tesseract worker（避免首次打开页面就加载很大资源）
-// ===== OCR (Tesseract.js) =====
+// ===== OCR (Tesseract.js) - 稳定版 + 进度 =====
 let _ocrWorker = null;
-let _tessMod = null;
+let _ocrLangInited = ""; // 记录当前 worker 初始化的语言
 
-function loadScript(src){
+const TESS_BASE = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist";
+const TESS_LANG = "https://tessdata.projectnaptha.com/4.0.0"; // 语言数据源（稳定）
+
+function loadScriptOnce(src){
   return new Promise((resolve, reject)=>{
+    // 避免重复插入
+    if(document.querySelector(`script[data-src="${src}"]`)) return resolve();
     const s = document.createElement("script");
     s.src = src;
     s.async = true;
+    s.dataset.src = src;
     s.onload = resolve;
     s.onerror = () => reject(new Error("脚本加载失败：" + src));
     document.head.appendChild(s);
   });
 }
 
-async function getTesseract(){
-  // 1) 若已是 UMD 全局（最稳）
+async function ensureTesseractUMD(){
   if (window.Tesseract?.createWorker) return window.Tesseract;
-
-  // 2) 尝试 ESM import（有些导出在 default 上）
-  if(!_tessMod){
-    try{
-      _tessMod = await import("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js");
-    }catch(e){
-      _tessMod = null;
-    }
-  }
-  const tess = _tessMod?.default || _tessMod;
-  if (tess?.createWorker) return tess;
-
-  // 3) 兜底：加载 UMD 版本，挂到 window.Tesseract
-  await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js");
-  if (window.Tesseract?.createWorker) return window.Tesseract;
-
-  throw new Error("Tesseract 加载失败：createWorker 不存在");
+  await loadScriptOnce(`${TESS_BASE}/tesseract.min.js`);
+  if (!window.Tesseract?.createWorker) throw new Error("Tesseract 加载失败：createWorker 不存在");
+  return window.Tesseract;
 }
 
-async function getOcrWorker(){
-  if(_ocrWorker) return _ocrWorker;
+// 简单图像预处理：缩放 + 灰度（大幅提速）
+async function preprocessImageToBlob(file){
+  const bmp = await createImageBitmap(file);
+  const maxW = 1400;
+  const scale = Math.min(1, maxW / bmp.width);
+  const w = Math.round(bmp.width * scale);
+  const h = Math.round(bmp.height * scale);
 
-  const T = await getTesseract();
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(bmp, 0, 0, w, h);
 
-  _ocrWorker = await T.createWorker({
-    // 如果你想显示进度：logger: m => console.log(m)
-    logger: () => {},
-    // 如果遇到语言包下载失败，再取消下面注释试试：
-    // langPath: "https://tessdata.projectnaptha.com/4.0.0",
+  // 灰度化（便宜但有效）
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i], g=d[i+1], b=d[i+2];
+    const y = (0.299*r + 0.587*g + 0.114*b) | 0;
+    d[i]=d[i+1]=d[i+2]=y;
+  }
+  ctx.putImageData(img, 0, 0);
+
+  return await new Promise((resolve)=>{
+    canvas.toBlob((blob)=>resolve(blob), "image/jpeg", 0.86);
   });
+}
 
-  // 通用初始化流程（很多示例都用这个）:contentReference[oaicite:0]{index=0}
-  await _ocrWorker.load();
-  await _ocrWorker.loadLanguage("eng");
-  await _ocrWorker.initialize("eng");
+// 进度回调：你传 itemId 进来更新 UI
+async function getOcrWorker(lang, onProgress){
+  const T = await ensureTesseractUMD();
+
+  if(!_ocrWorker){
+    _ocrWorker = await T.createWorker({
+      logger: (m)=>{
+        // m: { status, progress }
+        if(onProgress) onProgress(m);
+      },
+      workerPath: `${TESS_BASE}/worker.min.js`,
+      corePath: `${TESS_BASE}/tesseract-core.wasm.js`,
+      langPath: TESS_LANG,
+    });
+  }
+
+  // 如果语言没初始化过或换了语言，才重新初始化
+  if(_ocrLangInited !== lang){
+    try{
+      await _ocrWorker.loadLanguage(lang);
+      await _ocrWorker.initialize(lang);
+      _ocrLangInited = lang;
+    }catch(e){
+      throw new Error(`语言初始化失败(${lang})：` + (e?.message || String(e)));
+    }
+  }
 
   return _ocrWorker;
 }
 
-async function ocrFileToText(file){
-  const w = await getOcrWorker();
-  const { data } = await w.recognize(file);
+async function ocrFileToText(file, itemId){
+  // 预处理（缩放灰度）
+  const blob = await preprocessImageToBlob(file);
+
+  // 默认先英文（快），必要时你可以再做中文 fallback
+  const lang = "eng";
+
+  const w = await getOcrWorker(lang, (m)=>{
+    // 把进度写到队列条目上
+    if(itemId) updateInvoiceProgress(itemId, m?.status || "", m?.progress ?? 0);
+  });
+
+  const { data } = await w.recognize(blob);
   return (data?.text || "").trim();
 }
  
@@ -1407,6 +1446,9 @@ async function ocrFileToText(file){
           err: "",
           applied: false,
           added: false,
+          progress: 0,
+          progressStatus: "",
+
         });
       }
       renderInvoiceQueue();
@@ -1428,7 +1470,7 @@ async function ocrFileToText(file){
         item.status = "ocring";
         renderInvoiceQueue();
         try{
-          item.ocrText = await ocrFileToText(item.file);
+          item.ocrText = await ocrFileToText(item.file, item.id);
         }catch(e){
           item.status = "failed";
           item.err = "OCR失败：" + (e?.message || String(e));
@@ -1458,6 +1500,16 @@ async function ocrFileToText(file){
     }
   }
   
+  function updateInvoiceProgress(id, status, progress){
+  const it = invoiceDrafts.find(x=>x.id===id);
+  if(!it) return;
+  it.progressStatus = status || "";
+  // progress 可能是 0~1
+  const p = Number(progress);
+  if(isFinite(p)) it.progress = Math.max(0, Math.min(1, p));
+  renderInvoiceQueue();
+}
+
   function renderInvoiceQueue(){
     const box = document.getElementById("invoiceQueueBox");
     if(!box) return;
@@ -1512,6 +1564,14 @@ async function ocrFileToText(file){
             <div>
               <div style="font-weight:950">${escapeHtml(item.name)}</div>
               <div class="small muted" style="margin-top:4px">${escapeHtml(statusText)}</div>
+              ${(item.status==="ocring" || item.status==="ai_parsing") ? `
+              <div style="margin-top:6px">
+                <div class="small muted">${escapeHtml(item.progressStatus || "")} ${(item.progress*100).toFixed(0)}%</div>
+                <div style="height:8px;border-radius:999px;background:rgba(18,22,42,.08);overflow:hidden;margin-top:6px">
+                  <div style="height:100%;width:${Math.round(item.progress*100)}%;background:linear-gradient(90deg, rgba(18,194,255,.95), rgba(59,92,255,.92));"></div>
+                </div>
+              </div>
+            ` : ``}
               ${item.err ? `<div class="small" style="margin-top:4px;color:var(--bad)">${escapeHtml(item.err)}</div>` : ``}
               ${item.status==="ready" ? `
                 <div class="small muted" style="margin-top:6px">
@@ -2488,6 +2548,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
