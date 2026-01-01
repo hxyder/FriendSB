@@ -907,90 +907,123 @@
     toast("已带入摘要");
   }
   
+// 修改 callAI 函数，调用你的worker而不是直接调用DeepSeek API
 async function callAI(messages) {
+    if(!roomId) throw new Error("请先加入房间");
+    if(!/^\d{6}$/.test(passcode||"")) throw new Error("请先输入6位口令");
+    
+    const token = getAiToken(); // 这是你的APP_TOKEN，用于访问worker
+    if(!token) throw new Error("请先在'协作/分享'里保存APP_TOKEN");
+
+    const response = await fetch("https://derfriendtrip.hxy94045.workers.dev/ai", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-APP-TOKEN": token, // 使用X-APP-TOKEN头
+        },
+        body: JSON.stringify({
+            roomId,
+            passcode,
+            messages,
+            model: "deepseek-chat",
+            temperature: 0.2
+        })
+    });
+
+    if(!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `AI请求失败（${response.status}）`);
+    }
+
+    const data = await response.json();
+    // DeepSeek 返回结构：choices[0].message.content
+    return data?.choices?.[0]?.message?.content ?? JSON.stringify(data);
+}
+
+// 专门用于图片识别的函数
+async function recognizeInvoiceImage(base64Image) {
     if(!roomId) throw new Error("请先加入房间");
     if(!/^\d{6}$/.test(passcode||"")) throw new Error("请先输入6位口令");
     
     const token = getAiToken();
     if(!token) throw new Error("请先在'协作/分享'里保存APP_TOKEN");
 
-    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
+    // 创建专门用于图片识别的消息
+    const messages = [
+        {
+            role: "system",
+            content: "你是一个专业的发票/收据解析器。请从图片中提取信息并以JSON格式返回。只返回JSON，不要有任何其他文字。"
         },
-        body: JSON.stringify({
-            model: "deepseek-chat", // 或者 vision 模型如果可用
-            messages: messages,
-            temperature: 0.1,
-            max_tokens: 2000
-        })
-    });
-
-    if(!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || "API调用失败");
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-}
-
-// 专门用于发票识别的AI调用
-async function callVisionAPI(base64Image) {
-    const token = getAiToken();
-    if(!token) throw new Error("请先在'协作/分享'里保存APP_TOKEN");
-
-    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-            model: "deepseek-chat", // 如果支持vision，用vision模型
-            messages: [
+        {
+            role: "user",
+            content: [
                 {
-                    role: "user",
-                    content: [
-                        {
-                            type: "text",
-                            text: "请识别这张发票/收据中的所有文字信息，并以JSON格式返回以下字段：merchant（商家名）, invoice_date（日期YYYY-MM-DD）, total（总金额）, currency（货币）, suggest_title（建议的账单标题）, notes（备注信息）。请只返回JSON，不要有其他文字。"
-                        },
-                        {
-                            type: "image_url",
-                            image_url: {
-                                url: `data:image/jpeg;base64,${base64Image}`
-                            }
-                        }
-                    ]
+                    type: "text",
+                    text: `请提取以下信息并返回JSON：
+                    {
+                        "merchant": "商家名称",
+                        "invoice_date": "YYYY-MM-DD格式日期",
+                        "total": 金额数字,
+                        "currency": "货币如USD、CNY",
+                        "suggest_title": "建议的账单标题",
+                        "notes": "其他备注信息"
+                    }
+                    如果没有找到某些信息，用空字符串或0代替。`
+                },
+                {
+                    type: "image_url",
+                    image_url: {
+                        url: `data:image/jpeg;base64,${base64Image}`
+                    }
                 }
-            ],
+            ]
+        }
+    ];
+
+    // 调用worker，但需要worker支持图片识别
+    const response = await fetch("https://derfriendtrip.hxy94045.workers.dev/ai", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-APP-TOKEN": token,
+        },
+        body: JSON.stringify({
+            roomId,
+            passcode,
+            messages,
+            model: "deepseek-chat", // 或者如果有vision模型，用vision
             temperature: 0.1,
             max_tokens: 2000
         })
     });
 
     if(!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || "图片识别失败");
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `图片识别失败（${response.status}）`);
     }
 
     const data = await response.json();
-    const content = data.choices[0].message.content;
+    const content = data?.choices?.[0]?.message?.content || "";
     
-    // 提取JSON部分
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if(jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-    }
-    
-    // 如果没有找到JSON，尝试解析整个内容
+    // 提取JSON
     try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if(jsonMatch) {
+            return JSON.parse(jsonMatch[0]);
+        }
+        // 如果没找到JSON，尝试直接解析
         return JSON.parse(content);
-    } catch {
-        throw new Error("无法解析AI返回的JSON");
+    } catch(e) {
+        console.error("JSON解析失败:", content.substring(0, 200));
+        // 返回默认结构
+        return {
+            merchant: "未识别商家",
+            invoice_date: new Date().toISOString().split('T')[0],
+            total: 0,
+            currency: "USD",
+            suggest_title: "发票",
+            notes: "识别失败，请手动填写"
+        };
     }
 }
   
@@ -2548,6 +2581,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
