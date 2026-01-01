@@ -1338,8 +1338,8 @@ async function getOcrWorker(){
 
   // 通用初始化流程（很多示例都用这个）:contentReference[oaicite:0]{index=0}
   await _ocrWorker.load();
-  await _ocrWorker.loadLanguage("eng+chi_sim");
-  await _ocrWorker.initialize("eng+chi_sim");
+  await _ocrWorker.loadLanguage("eng");
+  await _ocrWorker.initialize("eng");
 
   return _ocrWorker;
 }
@@ -2488,6 +2488,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
