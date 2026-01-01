@@ -2745,27 +2745,47 @@ function syncFilterUI(){
 
   // ========= JSON 备份 =========
   function exportJSONToBox(){ $("jsonBox").value = JSON.stringify(state,null,2); toast("已导出到文本框"); }
-  function importJSONFromBox(){
-    subtotal: (b.subtotal!=null && isFinite(Number(b.subtotal))) ? Math.max(0, Number(b.subtotal)) : null,
-    tipPercent: (b.tipPercent!=null && isFinite(Number(b.tipPercent))) ? clamp(Number(b.tipPercent),0,25) : 0,
-    baseSubtotal: (b.baseSubtotal!=null && isFinite(Number(b.baseSubtotal))) ? Math.max(0, Number(b.baseSubtotal)) : null,
+function importJSONFromBox(){
+  try{
+    const txt = $("jsonBox").value.trim();
+    if(!txt){ toast("请先粘贴 JSON"); return; }
 
-    try{
-      const txt=$("jsonBox").value.trim();
-      if(!txt){ toast("请先粘贴 JSON"); return; }
-      const obj=JSON.parse(txt);
-      if(!obj || !Array.isArray(obj.people) || !Array.isArray(obj.bills)){ toast("JSON结构不对"); return; }
-      state.people=obj.people.map(String).filter(Boolean);
-      state.bills=obj.bills.map(b=>({
-        id:b.id||uid(), title:String(b.title||"账单"), amount:Number(b.amount)||0,
-        start:b.start||"", end:b.end||"", payer:String(b.payer||""),
-        participants:Array.isArray(b.participants)? b.participants.map(p=>({
-          name:String(p.name||""), days:Math.max(0, Math.floor(Number(p.days)||0))
-        })).filter(p=>p.name):[]
-      }));
-      touchAndRender("导入成功");
-    }catch(e){ toast("导入失败："+e.message); }
+    const obj = JSON.parse(txt);
+    if(!obj || !Array.isArray(obj.people) || !Array.isArray(obj.bills)){
+      toast("JSON结构不对"); 
+      return;
+    }
+
+    state.people = obj.people.map(String).filter(Boolean);
+
+    state.bills = obj.bills.map(b=>({
+      id: b.id || uid(),
+      title: String(b.title || "账单"),
+      amount: isFinite(Number(b.amount)) ? Math.max(0, Number(b.amount)) : 0,
+      start: b.start || "",
+      end: b.end || "",
+      payer: String(b.payer || ""),
+
+      // ✅ 参与人
+      participants: Array.isArray(b.participants)
+        ? b.participants.map(p=>({
+            name: String(p.name || ""),
+            days: Math.max(0, Math.floor(Number(p.days) || 0))
+          })).filter(p=>p.name)
+        : [],
+
+      // ✅ tip 相关三个字段（放这里才对）
+      subtotal: (b.subtotal!=null && isFinite(Number(b.subtotal))) ? Math.max(0, Number(b.subtotal)) : null,
+      tipPercent: (b.tipPercent!=null && isFinite(Number(b.tipPercent))) ? clamp(Number(b.tipPercent),0,25) : 0,
+      baseSubtotal: (b.baseSubtotal!=null && isFinite(Number(b.baseSubtotal))) ? Math.max(0, Number(b.baseSubtotal)) : null,
+    }));
+
+    touchAndRender("导入成功");
+  }catch(e){
+    toast("导入失败："+e.message);
   }
+}
+
   function exportJSON(){ openModal("share"); exportJSONToBox(); }
   function clearAll(){
     if(!confirm("确认清空全部人员和账单？")) return;
@@ -3074,5 +3094,6 @@ window.renderInvoicePager = renderInvoicePager;
 </script>
 </body>
 </html>
+
 
 
