@@ -1272,29 +1272,49 @@ function getTipPercentFromUI(){
   }
   return clamp(Number(v)||0, 0, 25);
 }
-
-function recalcBillTotalFromTip(){
+  
+function getBaseSubtotalForTip(){
   const subEl = document.getElementById("billSubtotal");
   const amtEl = document.getElementById("billAmount");
-  if(!subEl || !amtEl) return;
+  if(!amtEl) return 0;
 
-  const sub = Number(subEl.value);
-  const subtotal = isFinite(sub) ? Math.max(0, sub) : 0;
+  // 1) 用户填了 subtotal：它就是基准
+  if(subEl && subEl.value !== "" && subEl.value != null){
+    const v = Number(subEl.value);
+    const base = isFinite(v) ? Math.max(0, v) : 0;
+    amtEl.dataset.baseSubtotal = String(base); // 同步一下，方便后续一致
+    return base;
+  }
+
+  // 2) 没填 subtotal：优先用曾经记住的基准，避免重复叠加
+  const ds = Number(amtEl.dataset.baseSubtotal);
+  if(isFinite(ds)) return Math.max(0, ds);
+
+  // 3) 第一次：把当前 amount 当作基准
+  const cur = Number(amtEl.value);
+  const base = isFinite(cur) ? Math.max(0, cur) : 0;
+  amtEl.dataset.baseSubtotal = String(base);
+  return base;
+}
+
+function recalcBillTotalFromTip(){
+  const amtEl = document.getElementById("billAmount");
+  if(!amtEl) return;
 
   const pct = getTipPercentFromUI();
-  const total = subtotal * (1 + pct/100);
+  const base = getBaseSubtotalForTip();   // ✅ 关键：不填 subtotal 也能取到“基准小计”
+  const total = base * (1 + pct/100);
 
-  // 写回总额
-  if(subEl.value === ""){
-    // 用户没填 subtotal：不强行覆盖 amount
-    return;
-  }
-  amtEl.value = total ? total.toFixed(2) : "";
+  // ✅ total=0 也写 0.00，不写空
+  amtEl.value = total.toFixed(2);
 }
+
+
 
 function bindTipEventsOnce(){
   const subEl = document.getElementById("billSubtotal");
   const otherEl = document.getElementById("billTipOther");
+  const amtEl = document.getElementById("billAmount");
   if(!subEl || subEl.dataset.tipBound) return;
   subEl.dataset.tipBound = "1";
 
@@ -1322,6 +1342,17 @@ function bindTipEventsOnce(){
       recalcBillTotalFromTip();
     });
   }
+  // ✅ 用户手动改“金额”时（且没填 subtotal），把它当作新的基准小计
+if(amtEl && !amtEl.dataset.baseBound){
+  amtEl.dataset.baseBound = "1";
+  amtEl.addEventListener("input", ()=>{
+    const subEl2 = document.getElementById("billSubtotal");
+    if(subEl2 && subEl2.value !== "" && subEl2.value != null) return; // 有 subtotal 就不管
+    const v = Number(amtEl.value);
+    amtEl.dataset.baseSubtotal = String(isFinite(v) ? Math.max(0, v) : 0);
+  });
+}
+
 }
   
   function uid(){
@@ -2083,6 +2114,11 @@ function removeInvoice(id) {
     const d=`${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
     if(!$("billStart").value) $("billStart").value=d;
     if(!$("billEnd").value) $("billEnd").value=d;
+    
+    const amtEl = document.getElementById("billAmount");
+    if(amtEl){
+      delete amtEl.dataset.baseSubtotal;
+    }
 
     const payer=$("billPayer");
     payer.innerHTML="";
@@ -2121,10 +2157,12 @@ function removeInvoice(id) {
   }
 
   function createBill(){
+    recalcBillTotalFromTip();
     const title=$("billTitle").value.trim();
     const amount=Number($("billAmount").value);
     const subtotal = Number(document.getElementById("billSubtotal")?.value);
     const tipPercent = getTipPercentFromUI();
+    const baseSubtotal = getBaseSubtotalForTip();
     const start=$("billStart").value;
     const end=$("billEnd").value;
     const payer=$("billPayer").value;
@@ -2152,7 +2190,7 @@ function removeInvoice(id) {
       b.payer = payer;
       b.subtotal = isFinite(subtotal) ? Math.max(0, subtotal) : null;
       b.tipPercent = isFinite(tipPercent) ? tipPercent : 0;
-
+      b.baseSubtotal = isFinite(baseSubtotal) ? Math.max(0, baseSubtotal) : null;
       const oldMap = new Map((b.participants||[]).map(p=>[p.name, p.days]));
       b.participants = participantsSelected.map(name=>({
         name,
@@ -2172,7 +2210,8 @@ function removeInvoice(id) {
     state.bills.unshift({
       id: uid(), title, amount, start, end, payer, participants,
       subtotal: isFinite(subtotal) ? Math.max(0, subtotal) : null,
-      tipPercent: isFinite(tipPercent) ? tipPercent : 0
+      tipPercent: isFinite(tipPercent) ? tipPercent : 0,
+      baseSubtotal: isFinite(baseSubtotal) ? Math.max(0, baseSubtotal) : null
     });
 
     
@@ -2220,7 +2259,18 @@ function removeInvoice(id) {
         otherEl.value = String(clamp(tp,0,25));
       }
     }
+    // ✅ 恢复“基准小计”，避免编辑时切小费重复叠加/金额变空
+    const amtEl = document.getElementById("billAmount");
+    if(amtEl){
+      // 优先用 b.baseSubtotal；没有的话再 fallback 到 subtotal；再没有就用当前 amount
+      const bs =
+        (b.baseSubtotal != null && isFinite(Number(b.baseSubtotal))) ? Number(b.baseSubtotal) :
+        (b.subtotal != null && isFinite(Number(b.subtotal))) ? Number(b.subtotal) :
+        (isFinite(Number(b.amount)) ? Number(b.amount) : 0);
     
+      amtEl.dataset.baseSubtotal = String(Math.max(0, bs));
+    }
+        
     // 回填后：如果 subtotal 有值，立刻重算一次总额（可选）
     recalcBillTotalFromTip();
       
@@ -2696,6 +2746,10 @@ function syncFilterUI(){
   // ========= JSON 备份 =========
   function exportJSONToBox(){ $("jsonBox").value = JSON.stringify(state,null,2); toast("已导出到文本框"); }
   function importJSONFromBox(){
+    subtotal: (b.subtotal!=null && isFinite(Number(b.subtotal))) ? Math.max(0, Number(b.subtotal)) : null,
+    tipPercent: (b.tipPercent!=null && isFinite(Number(b.tipPercent))) ? clamp(Number(b.tipPercent),0,25) : 0,
+    baseSubtotal: (b.baseSubtotal!=null && isFinite(Number(b.baseSubtotal))) ? Math.max(0, Number(b.baseSubtotal)) : null,
+
     try{
       const txt=$("jsonBox").value.trim();
       if(!txt){ toast("请先粘贴 JSON"); return; }
@@ -3020,4 +3074,5 @@ window.renderInvoicePager = renderInvoicePager;
 </script>
 </body>
 </html>
+
 
