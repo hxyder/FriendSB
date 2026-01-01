@@ -1280,6 +1280,271 @@ window.openAiEntry = openAiEntry;
   }
 
   // ========= 账单表单 =========
+  // ================== 发票扫描：多张队列（OCR本地 + AI结构化） ==================
+  let invoiceDrafts = []; 
+  // item: { id, file, name, previewUrl, status, ocrText, parsed, err, applied, added }
+  
+  let currentAppliedInvoiceId = null;
+  
+  // 懒加载 Tesseract worker（避免首次打开页面就加载很大资源）
+  let _ocrWorker = null;
+  async function getOcrWorker(){
+    if(_ocrWorker) return _ocrWorker;
+    const mod = await import("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js");
+    _ocrWorker = await mod.createWorker("eng+chi_sim");
+    return _ocrWorker;
+  }
+  
+  async function ocrFileToText(file){
+    const w = await getOcrWorker();
+    const { data } = await w.recognize(file);
+    return (data?.text || "").trim();
+  }
+  
+  // 让 AI 把 OCR 文本变成严格 JSON
+  async function parseInvoiceTextWithAI(ocrText){
+    const sys = {
+      role:"system",
+      content:
+  `你是发票/小票解析器。请把用户提供的OCR文本解析成严格JSON。
+  只允许输出JSON，不要输出任何解释文字，不要markdown。
+  字段：
+  merchant(字符串), invoice_date(YYYY-MM-DD或空), total(数字), currency(如USD/CNY或空),
+  suggest_title(字符串), notes(字符串), confidence(0到1数字)。
+  若不确定 total，请尽量找 Total/Amount Due/Grand Total。`
+    };
+    const user = { role:"user", content:`OCR文本如下：\n\n${ocrText}` };
+  
+    const ans = await callAI([sys, user]); // 你已有 callAI：返回 assistant content 字符串
+    const jsonStr = (ans || "").trim().match(/\{[\s\S]*\}/)?.[0] || "{}";
+    const obj = JSON.parse(jsonStr);
+    return obj;
+  }
+  
+  // 入口：点击“扫描发票”
+  function scanInvoices(){
+    // 不建议在“编辑账单模式”里扫描，避免混乱
+    if(editingBillId){
+      toast("请先保存/取消当前编辑，再扫描发票");
+      return;
+    }
+    const input = document.getElementById("invoiceFiles");
+    if(!input) return;
+    input.value = "";
+    input.click();
+  }
+  
+  // 绑定 input change（只绑定一次）
+  function bindInvoiceInputOnce(){
+    const input = document.getElementById("invoiceFiles");
+    if(!input || input.dataset.bound) return;
+    input.dataset.bound = "1";
+  
+    input.addEventListener("change", async ()=>{
+      const files = Array.from(input.files || []);
+      if(files.length === 0) return;
+  
+      // 建队列
+      for(const f of files){
+        const id = uid();
+        invoiceDrafts.push({
+          id,
+          file: f,
+          name: f.name || "invoice",
+          previewUrl: URL.createObjectURL(f),
+          status: "queued",
+          ocrText: "",
+          parsed: null,
+          err: "",
+          applied: false,
+          added: false,
+        });
+      }
+      renderInvoiceQueue();
+      // 串行处理（避免你 4次/分钟 限流）
+      await processInvoiceQueueSerial();
+    });
+  }
+  
+  let _invoiceProcessing = false;
+  async function processInvoiceQueueSerial(){
+    if(_invoiceProcessing) return;
+    _invoiceProcessing = true;
+  
+    try{
+      for(const item of invoiceDrafts){
+        if(item.status !== "queued") continue;
+  
+        // 1) OCR 本地
+        item.status = "ocring";
+        renderInvoiceQueue();
+        try{
+          item.ocrText = await ocrFileToText(item.file);
+        }catch(e){
+          item.status = "failed";
+          item.err = "OCR失败：" + (e?.message || String(e));
+          renderInvoiceQueue();
+          continue;
+        }
+  
+        // 2) AI 结构化（需要：已加入房间+口令+APP_TOKEN）
+        item.status = "ai_parsing";
+        renderInvoiceQueue();
+        try{
+          item.parsed = await parseInvoiceTextWithAI(item.ocrText);
+          item.status = "ready";
+          renderInvoiceQueue();
+        }catch(e){
+          // AI 不可用时：仍保留 OCR 文本，用户可以手动看着填
+          item.status = "ready_ocr_only";
+          item.err = "AI解析失败（可手动填表单）：" + (e?.message || String(e));
+          renderInvoiceQueue();
+        }
+  
+        // ✅ 每次 AI 调用后等 16 秒（≈4次/分钟），避免限流
+        await new Promise(r=>setTimeout(r, 16000));
+      }
+    }finally{
+      _invoiceProcessing = false;
+    }
+  }
+  
+  function renderInvoiceQueue(){
+    const box = document.getElementById("invoiceQueueBox");
+    if(!box) return;
+  
+    if(invoiceDrafts.length === 0){
+      box.style.display = "none";
+      box.innerHTML = "";
+      return;
+    }
+  
+    box.style.display = "block";
+    box.innerHTML = `
+      <div class="card" style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(255,255,255,.75)">
+        <div style="font-weight:950">发票识别队列（${invoiceDrafts.length}）</div>
+        <div class="hint" style="margin-top:6px">
+          - 点“应用到表单”会把识别结果填入上面的账单表单，你可以继续编辑后再点“创建”。<br/>
+          - 多张会排队依次识别，避免触发每分钟4次限流。
+        </div>
+        <div class="hr"></div>
+        <div id="invoiceQueueList" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </div>
+    `;
+  
+    const list = document.getElementById("invoiceQueueList");
+    invoiceDrafts.slice().reverse().forEach(item=>{
+      const p = item.parsed || {};
+      const title = (p.suggest_title || p.merchant || "").trim();
+      const date = (p.invoice_date || "").trim();
+      const total = (p.total ?? "");
+  
+      let statusText = "";
+      if(item.status==="queued") statusText="等待中…";
+      if(item.status==="ocring") statusText="OCR识别中…";
+      if(item.status==="ai_parsing") statusText="AI解析中…";
+      if(item.status==="ready") statusText="✅ 可应用/可编辑";
+      if(item.status==="ready_ocr_only") statusText="⚠️ 仅OCR（可手动填）";
+      if(item.status==="failed") statusText="❌ 失败";
+      if(item.added) statusText="✅ 已加入账单";
+  
+      const canApply = (item.status==="ready" || item.status==="ready_ocr_only") && !item.added;
+  
+      const div = document.createElement("div");
+      div.className = "card";
+      div.style.boxShadow = "none";
+      div.style.borderRadius = "14px";
+      div.style.border = "1px solid var(--line)";
+      div.style.background = "rgba(255,255,255,.9)";
+      div.innerHTML = `
+        <div class="row" style="justify-content:space-between; align-items:flex-start">
+          <div class="row" style="gap:10px; align-items:flex-start">
+            <img src="${item.previewUrl}" style="width:54px;height:54px;object-fit:cover;border-radius:12px;border:1px solid var(--line)" />
+            <div>
+              <div style="font-weight:950">${escapeHtml(item.name)}</div>
+              <div class="small muted" style="margin-top:4px">${escapeHtml(statusText)}</div>
+              ${item.err ? `<div class="small" style="margin-top:4px;color:var(--bad)">${escapeHtml(item.err)}</div>` : ``}
+              ${item.status==="ready" ? `
+                <div class="small muted" style="margin-top:6px">
+                  识别：${escapeHtml(title || "（无商家/标题）")} · ${escapeHtml(date || "（无日期）")} · $${escapeHtml(String(total))}
+                </div>
+              `:``}
+            </div>
+          </div>
+  
+          <div class="row" style="gap:8px; align-items:center">
+            <button class="secondary" ${canApply ? "" : "disabled"} data-act="apply">应用到表单</button>
+            <button class="danger" data-act="remove">移除</button>
+          </div>
+        </div>
+      `;
+  
+      div.querySelector('[data-act="apply"]').addEventListener("click", ()=>{
+        applyInvoiceToBillForm(item.id);
+      });
+      div.querySelector('[data-act="remove"]').addEventListener("click", ()=>{
+        // 释放 objectURL
+        try{ URL.revokeObjectURL(item.previewUrl); }catch(e){}
+        invoiceDrafts = invoiceDrafts.filter(x=>x.id!==item.id);
+        if(currentAppliedInvoiceId === item.id) currentAppliedInvoiceId = null;
+        renderInvoiceQueue();
+        toast("已移除");
+      });
+  
+      list.appendChild(div);
+    });
+  }
+  
+  function applyInvoiceToBillForm(draftId){
+    const item = invoiceDrafts.find(x=>x.id===draftId);
+    if(!item){ toast("找不到该草稿"); return; }
+  
+    currentAppliedInvoiceId = draftId;
+    invoiceDrafts.forEach(x=>x.applied=false);
+    item.applied = true;
+  
+    const p = item.parsed || {};
+    const title = (p.suggest_title || p.merchant || "发票").trim();
+    const date = (p.invoice_date || "").trim();
+    const total = Number(p.total ?? 0);
+  
+    // 填充到“添加账单”表单（用户可继续编辑）
+    const titleEl = document.getElementById("billTitle");
+    const amountEl = document.getElementById("billAmount");
+    const startEl = document.getElementById("billStart");
+    const endEl = document.getElementById("billEnd");
+  
+    if(titleEl && title) titleEl.value = title;
+    if(amountEl && isFinite(total) && total >= 0) amountEl.value = String(total);
+  
+    if(startEl && date) startEl.value = date;
+    if(endEl && date) endEl.value = date;
+  
+    // 触发天数刷新
+    startEl?.dispatchEvent(new Event("change"));
+    endEl?.dispatchEvent(new Event("change"));
+  
+    toast("已应用到表单（可继续编辑后点创建）");
+    renderInvoiceQueue();
+  }
+  
+  // 让创建成功后：把当前应用的发票标记为“已加入”，并自动应用下一张 ready 的
+  function afterBillCreatedFromInvoice(){
+    if(!currentAppliedInvoiceId) return;
+    const cur = invoiceDrafts.find(x=>x.id===currentAppliedInvoiceId);
+    if(cur){
+      cur.added = true;
+      cur.applied = false;
+    }
+    currentAppliedInvoiceId = null;
+  
+    // 自动找下一张可用的
+    const next = invoiceDrafts.find(x => !x.added && (x.status==="ready" || x.status==="ready_ocr_only"));
+    if(next){
+      applyInvoiceToBillForm(next.id);
+    }
+    renderInvoiceQueue();
+  }
   function seedBillForm(){
     const today=new Date();
     const pad=(n)=>String(n).padStart(2,"0");
@@ -1303,271 +1568,7 @@ window.openAiEntry = openAiEntry;
       div.innerHTML = `<input type="checkbox" value="${escapeHtml(p)}" checked /> <span style="font-weight:900">${escapeHtml(p)}</span>`;
       checks.appendChild(div);
     });
-// ================== 发票扫描：多张队列（OCR本地 + AI结构化） ==================
-let invoiceDrafts = []; 
-// item: { id, file, name, previewUrl, status, ocrText, parsed, err, applied, added }
 
-let currentAppliedInvoiceId = null;
-
-// 懒加载 Tesseract worker（避免首次打开页面就加载很大资源）
-let _ocrWorker = null;
-async function getOcrWorker(){
-  if(_ocrWorker) return _ocrWorker;
-  const mod = await import("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js");
-  _ocrWorker = await mod.createWorker("eng+chi_sim");
-  return _ocrWorker;
-}
-
-async function ocrFileToText(file){
-  const w = await getOcrWorker();
-  const { data } = await w.recognize(file);
-  return (data?.text || "").trim();
-}
-
-// 让 AI 把 OCR 文本变成严格 JSON
-async function parseInvoiceTextWithAI(ocrText){
-  const sys = {
-    role:"system",
-    content:
-`你是发票/小票解析器。请把用户提供的OCR文本解析成严格JSON。
-只允许输出JSON，不要输出任何解释文字，不要markdown。
-字段：
-merchant(字符串), invoice_date(YYYY-MM-DD或空), total(数字), currency(如USD/CNY或空),
-suggest_title(字符串), notes(字符串), confidence(0到1数字)。
-若不确定 total，请尽量找 Total/Amount Due/Grand Total。`
-  };
-  const user = { role:"user", content:`OCR文本如下：\n\n${ocrText}` };
-
-  const ans = await callAI([sys, user]); // 你已有 callAI：返回 assistant content 字符串
-  const jsonStr = (ans || "").trim().match(/\{[\s\S]*\}/)?.[0] || "{}";
-  const obj = JSON.parse(jsonStr);
-  return obj;
-}
-
-// 入口：点击“扫描发票”
-function scanInvoices(){
-  // 不建议在“编辑账单模式”里扫描，避免混乱
-  if(editingBillId){
-    toast("请先保存/取消当前编辑，再扫描发票");
-    return;
-  }
-  const input = document.getElementById("invoiceFiles");
-  if(!input) return;
-  input.value = "";
-  input.click();
-}
-
-// 绑定 input change（只绑定一次）
-function bindInvoiceInputOnce(){
-  const input = document.getElementById("invoiceFiles");
-  if(!input || input.dataset.bound) return;
-  input.dataset.bound = "1";
-
-  input.addEventListener("change", async ()=>{
-    const files = Array.from(input.files || []);
-    if(files.length === 0) return;
-
-    // 建队列
-    for(const f of files){
-      const id = uid();
-      invoiceDrafts.push({
-        id,
-        file: f,
-        name: f.name || "invoice",
-        previewUrl: URL.createObjectURL(f),
-        status: "queued",
-        ocrText: "",
-        parsed: null,
-        err: "",
-        applied: false,
-        added: false,
-      });
-    }
-    renderInvoiceQueue();
-    // 串行处理（避免你 4次/分钟 限流）
-    await processInvoiceQueueSerial();
-  });
-}
-
-let _invoiceProcessing = false;
-async function processInvoiceQueueSerial(){
-  if(_invoiceProcessing) return;
-  _invoiceProcessing = true;
-
-  try{
-    for(const item of invoiceDrafts){
-      if(item.status !== "queued") continue;
-
-      // 1) OCR 本地
-      item.status = "ocring";
-      renderInvoiceQueue();
-      try{
-        item.ocrText = await ocrFileToText(item.file);
-      }catch(e){
-        item.status = "failed";
-        item.err = "OCR失败：" + (e?.message || String(e));
-        renderInvoiceQueue();
-        continue;
-      }
-
-      // 2) AI 结构化（需要：已加入房间+口令+APP_TOKEN）
-      item.status = "ai_parsing";
-      renderInvoiceQueue();
-      try{
-        item.parsed = await parseInvoiceTextWithAI(item.ocrText);
-        item.status = "ready";
-        renderInvoiceQueue();
-      }catch(e){
-        // AI 不可用时：仍保留 OCR 文本，用户可以手动看着填
-        item.status = "ready_ocr_only";
-        item.err = "AI解析失败（可手动填表单）：" + (e?.message || String(e));
-        renderInvoiceQueue();
-      }
-
-      // ✅ 每次 AI 调用后等 16 秒（≈4次/分钟），避免限流
-      await new Promise(r=>setTimeout(r, 16000));
-    }
-  }finally{
-    _invoiceProcessing = false;
-  }
-}
-
-function renderInvoiceQueue(){
-  const box = document.getElementById("invoiceQueueBox");
-  if(!box) return;
-
-  if(invoiceDrafts.length === 0){
-    box.style.display = "none";
-    box.innerHTML = "";
-    return;
-  }
-
-  box.style.display = "block";
-  box.innerHTML = `
-    <div class="card" style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(255,255,255,.75)">
-      <div style="font-weight:950">发票识别队列（${invoiceDrafts.length}）</div>
-      <div class="hint" style="margin-top:6px">
-        - 点“应用到表单”会把识别结果填入上面的账单表单，你可以继续编辑后再点“创建”。<br/>
-        - 多张会排队依次识别，避免触发每分钟4次限流。
-      </div>
-      <div class="hr"></div>
-      <div id="invoiceQueueList" style="display:flex; flex-direction:column; gap:10px;"></div>
-    </div>
-  `;
-
-  const list = document.getElementById("invoiceQueueList");
-  invoiceDrafts.slice().reverse().forEach(item=>{
-    const p = item.parsed || {};
-    const title = (p.suggest_title || p.merchant || "").trim();
-    const date = (p.invoice_date || "").trim();
-    const total = (p.total ?? "");
-
-    let statusText = "";
-    if(item.status==="queued") statusText="等待中…";
-    if(item.status==="ocring") statusText="OCR识别中…";
-    if(item.status==="ai_parsing") statusText="AI解析中…";
-    if(item.status==="ready") statusText="✅ 可应用/可编辑";
-    if(item.status==="ready_ocr_only") statusText="⚠️ 仅OCR（可手动填）";
-    if(item.status==="failed") statusText="❌ 失败";
-    if(item.added) statusText="✅ 已加入账单";
-
-    const canApply = (item.status==="ready" || item.status==="ready_ocr_only") && !item.added;
-
-    const div = document.createElement("div");
-    div.className = "card";
-    div.style.boxShadow = "none";
-    div.style.borderRadius = "14px";
-    div.style.border = "1px solid var(--line)";
-    div.style.background = "rgba(255,255,255,.9)";
-    div.innerHTML = `
-      <div class="row" style="justify-content:space-between; align-items:flex-start">
-        <div class="row" style="gap:10px; align-items:flex-start">
-          <img src="${item.previewUrl}" style="width:54px;height:54px;object-fit:cover;border-radius:12px;border:1px solid var(--line)" />
-          <div>
-            <div style="font-weight:950">${escapeHtml(item.name)}</div>
-            <div class="small muted" style="margin-top:4px">${escapeHtml(statusText)}</div>
-            ${item.err ? `<div class="small" style="margin-top:4px;color:var(--bad)">${escapeHtml(item.err)}</div>` : ``}
-            ${item.status==="ready" ? `
-              <div class="small muted" style="margin-top:6px">
-                识别：${escapeHtml(title || "（无商家/标题）")} · ${escapeHtml(date || "（无日期）")} · $${escapeHtml(String(total))}
-              </div>
-            `:``}
-          </div>
-        </div>
-
-        <div class="row" style="gap:8px; align-items:center">
-          <button class="secondary" ${canApply ? "" : "disabled"} data-act="apply">应用到表单</button>
-          <button class="danger" data-act="remove">移除</button>
-        </div>
-      </div>
-    `;
-
-    div.querySelector('[data-act="apply"]').addEventListener("click", ()=>{
-      applyInvoiceToBillForm(item.id);
-    });
-    div.querySelector('[data-act="remove"]').addEventListener("click", ()=>{
-      // 释放 objectURL
-      try{ URL.revokeObjectURL(item.previewUrl); }catch(e){}
-      invoiceDrafts = invoiceDrafts.filter(x=>x.id!==item.id);
-      if(currentAppliedInvoiceId === item.id) currentAppliedInvoiceId = null;
-      renderInvoiceQueue();
-      toast("已移除");
-    });
-
-    list.appendChild(div);
-  });
-}
-
-function applyInvoiceToBillForm(draftId){
-  const item = invoiceDrafts.find(x=>x.id===draftId);
-  if(!item){ toast("找不到该草稿"); return; }
-
-  currentAppliedInvoiceId = draftId;
-  invoiceDrafts.forEach(x=>x.applied=false);
-  item.applied = true;
-
-  const p = item.parsed || {};
-  const title = (p.suggest_title || p.merchant || "发票").trim();
-  const date = (p.invoice_date || "").trim();
-  const total = Number(p.total ?? 0);
-
-  // 填充到“添加账单”表单（用户可继续编辑）
-  const titleEl = document.getElementById("billTitle");
-  const amountEl = document.getElementById("billAmount");
-  const startEl = document.getElementById("billStart");
-  const endEl = document.getElementById("billEnd");
-
-  if(titleEl && title) titleEl.value = title;
-  if(amountEl && isFinite(total) && total >= 0) amountEl.value = String(total);
-
-  if(startEl && date) startEl.value = date;
-  if(endEl && date) endEl.value = date;
-
-  // 触发天数刷新
-  startEl?.dispatchEvent(new Event("change"));
-  endEl?.dispatchEvent(new Event("change"));
-
-  toast("已应用到表单（可继续编辑后点创建）");
-  renderInvoiceQueue();
-}
-
-// 让创建成功后：把当前应用的发票标记为“已加入”，并自动应用下一张 ready 的
-function afterBillCreatedFromInvoice(){
-  if(!currentAppliedInvoiceId) return;
-  const cur = invoiceDrafts.find(x=>x.id===currentAppliedInvoiceId);
-  if(cur){
-    cur.added = true;
-    cur.applied = false;
-  }
-  currentAppliedInvoiceId = null;
-
-  // 自动找下一张可用的
-  const next = invoiceDrafts.find(x => !x.added && (x.status==="ready" || x.status==="ready_ocr_only"));
-  if(next){
-    applyInvoiceToBillForm(next.id);
-  }
-  renderInvoiceQueue();
-}
 
     function updateDays(){
       const dd = daysInclusive($("billStart").value, $("billEnd").value);
@@ -2391,6 +2392,9 @@ function syncFilterUI(){
   window.seedAiContext = seedAiContext;
   window.sendAi = sendAi;
   window.openAiEntry = openAiEntry;
+  window.scanInvoices = scanInvoices;
+  window.bindInvoiceInputOnce = bindInvoiceInputOnce; // 可选，但你下面初始化会调用它
+
   // ========= 初始化 =========
   loadLocal();
   renderAll();
@@ -2435,6 +2439,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
