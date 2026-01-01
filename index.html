@@ -1349,13 +1349,7 @@ async function ocrFileToText(file){
   const { data } = await w.recognize(file);
   return (data?.text || "").trim();
 }
-  
-  async function ocrFileToText(file){
-    const w = await getOcrWorker();
-    const { data } = await w.recognize(file);
-    return (data?.text || "").trim();
-  }
-  
+ 
   // 让 AI 把 OCR 文本变成严格 JSON
   async function parseInvoiceTextWithAI(ocrText){
     const sys = {
@@ -2494,6 +2488,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
