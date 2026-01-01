@@ -1937,60 +1937,34 @@ function applySelectedTextFromOcr(id) {
     }
 }
 // 修改原有的发票处理完成逻辑，自动打开编辑界面
-async function processInvoiceQueueSerial() {
-    if (_invoiceProcessing) return;
-    _invoiceProcessing = true;
-
+// 简化发票处理逻辑
+async function processInvoice(index) {
+    if (index < 0 || index >= invoiceDrafts.length) return;
+    
+    const item = invoiceDrafts[index];
+    item.status = 'processing';
+    
     try {
-        for (const item of invoiceDrafts) {
-            if (item.status !== 'queued') continue;
-
-            item.status = 'processing';
-            renderInvoiceQueue();
-
-            try {
-                console.log('处理发票:', item.name);
-                
-                // 使用Tesseract.js进行OCR识别
-                const result = await recognizeInvoice(item.file);
-                
-                if (result.success) {
-                    item.parsed = result.data;
-                    item.ocrText = result.rawText;
-                    item.status = 'ready';
-                } else {
-                    item.status = 'ready';
-                    item.parsed = result.data;
-                    item.err = result.error || '识别失败';
-                }
-                
-            } catch (error) {
-                console.error('处理发票时出错:', error);
-                item.status = 'ready';
-                item.parsed = {
-                    merchant: '处理失败',
-                    invoice_date: new Date().toISOString().split('T')[0],
-                    total: 0,
-                    currency: 'USD',
-                    suggest_title: '发票',
-                    notes: `处理失败: ${error.message}`
-                };
-                item.err = error.message;
-            }
+        const result = await recognizeInvoice(item.file);
+        
+        if (result.success) {
+            item.parsed = result.data;
+            item.ocrText = result.rawText;
+            item.status = 'ready';
             
-            renderInvoiceQueue();
-            await new Promise(r => setTimeout(r, 1000));
+            // 自动加载到编辑表单
+            loadCurrentInvoice();
+        } else {
+            item.status = 'error';
+            item.err = result.error || '识别失败';
+            loadCurrentInvoice();
         }
         
-        // 所有发票处理完成后，自动打开编辑界面
-        if (invoiceDrafts.some(item => item.status === 'ready')) {
-            setTimeout(() => {
-                openInvoiceEdit(0);
-            }, 500);
-        }
-        
-    } finally {
-        _invoiceProcessing = false;
+    } catch (error) {
+        console.error('处理发票时出错:', error);
+        item.status = 'error';
+        item.err = error.message;
+        loadCurrentInvoice();
     }
 }
 
@@ -3218,6 +3192,7 @@ window.clearAllInvoices = clearAllInvoices;
 </script>
 </body>
 </html>
+
 
 
 
