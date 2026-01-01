@@ -1287,13 +1287,68 @@ window.openAiEntry = openAiEntry;
   let currentAppliedInvoiceId = null;
   
   // 懒加载 Tesseract worker（避免首次打开页面就加载很大资源）
-  let _ocrWorker = null;
-  async function getOcrWorker(){
-    if(_ocrWorker) return _ocrWorker;
-    const mod = await import("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js");
-    _ocrWorker = await mod.createWorker("eng+chi_sim");
-    return _ocrWorker;
+// ===== OCR (Tesseract.js) =====
+let _ocrWorker = null;
+let _tessMod = null;
+
+function loadScript(src){
+  return new Promise((resolve, reject)=>{
+    const s = document.createElement("script");
+    s.src = src;
+    s.async = true;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("脚本加载失败：" + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function getTesseract(){
+  // 1) 若已是 UMD 全局（最稳）
+  if (window.Tesseract?.createWorker) return window.Tesseract;
+
+  // 2) 尝试 ESM import（有些导出在 default 上）
+  if(!_tessMod){
+    try{
+      _tessMod = await import("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js");
+    }catch(e){
+      _tessMod = null;
+    }
   }
+  const tess = _tessMod?.default || _tessMod;
+  if (tess?.createWorker) return tess;
+
+  // 3) 兜底：加载 UMD 版本，挂到 window.Tesseract
+  await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js");
+  if (window.Tesseract?.createWorker) return window.Tesseract;
+
+  throw new Error("Tesseract 加载失败：createWorker 不存在");
+}
+
+async function getOcrWorker(){
+  if(_ocrWorker) return _ocrWorker;
+
+  const T = await getTesseract();
+
+  _ocrWorker = await T.createWorker({
+    // 如果你想显示进度：logger: m => console.log(m)
+    logger: () => {},
+    // 如果遇到语言包下载失败，再取消下面注释试试：
+    // langPath: "https://tessdata.projectnaptha.com/4.0.0",
+  });
+
+  // 通用初始化流程（很多示例都用这个）:contentReference[oaicite:0]{index=0}
+  await _ocrWorker.load();
+  await _ocrWorker.loadLanguage("eng+chi_sim");
+  await _ocrWorker.initialize("eng+chi_sim");
+
+  return _ocrWorker;
+}
+
+async function ocrFileToText(file){
+  const w = await getOcrWorker();
+  const { data } = await w.recognize(file);
+  return (data?.text || "").trim();
+}
   
   async function ocrFileToText(file){
     const w = await getOcrWorker();
@@ -2439,6 +2494,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
