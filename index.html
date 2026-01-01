@@ -1292,11 +1292,10 @@ let _ocrWorker = null;
 let _ocrLangInited = ""; // 记录当前 worker 初始化的语言
 
 const TESS_BASE = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist";
-const TESS_LANG = "https://tessdata.projectnaptha.com/4.0.0"; // 语言数据源（稳定）
+const TESS_LANG = "https://tessdata.projectnaptha.com/4.0.0";
 
 function loadScriptOnce(src){
   return new Promise((resolve, reject)=>{
-    // 避免重复插入
     if(document.querySelector(`script[data-src="${src}"]`)) return resolve();
     const s = document.createElement("script");
     s.src = src;
@@ -1308,10 +1307,10 @@ function loadScriptOnce(src){
   });
 }
 
-async function ensureTesseractUMD(){
-  if (window.Tesseract?.createWorker) return window.Tesseract;
+async function ensureTesseract(){
+  if(window.Tesseract?.recognize) return window.Tesseract;
   await loadScriptOnce(`${TESS_BASE}/tesseract.min.js`);
-  if (!window.Tesseract?.createWorker) throw new Error("Tesseract 加载失败：createWorker 不存在");
+  if(!window.Tesseract?.recognize) throw new Error("Tesseract 加载失败：recognize 不存在");
   return window.Tesseract;
 }
 
@@ -1373,21 +1372,47 @@ async function getOcrWorker(lang, onProgress){
   return _ocrWorker;
 }
 
+async function preprocessImageToBlob(file){
+  const bmp = await createImageBitmap(file);
+  const maxW = 1400;
+  const scale = Math.min(1, maxW / bmp.width);
+  const w = Math.round(bmp.width * scale);
+  const h = Math.round(bmp.height * scale);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(bmp, 0, 0, w, h);
+
+  // 灰度化提速
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for(let i=0;i<d.length;i+=4){
+    const y = (0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]) | 0;
+    d[i]=d[i+1]=d[i+2]=y;
+  }
+  ctx.putImageData(img, 0, 0);
+
+  return await new Promise((resolve)=>canvas.toBlob(b=>resolve(b), "image/jpeg", 0.86));
+}
+
 async function ocrFileToText(file, itemId){
-  // 预处理（缩放灰度）
+  const T = await ensureTesseract();
   const blob = await preprocessImageToBlob(file);
 
-  // 默认先英文（快），必要时你可以再做中文 fallback
-  const lang = "eng";
-
-  const w = await getOcrWorker(lang, (m)=>{
-    // 把进度写到队列条目上
-    if(itemId) updateInvoiceProgress(itemId, m?.status || "", m?.progress ?? 0);
+  const { data } = await T.recognize(blob, "eng", {
+    workerPath: `${TESS_BASE}/worker.min.js`,
+    corePath: `${TESS_BASE}/tesseract-core.wasm.js`,
+    langPath: TESS_LANG,
+    logger: (m)=>{
+      // m: { status, progress }
+      updateInvoiceProgress(itemId, m?.status || "", m?.progress ?? 0);
+    }
   });
 
-  const { data } = await w.recognize(blob);
   return (data?.text || "").trim();
 }
+
  
   // 让 AI 把 OCR 文本变成严格 JSON
   async function parseInvoiceTextWithAI(ocrText){
@@ -2548,6 +2573,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
