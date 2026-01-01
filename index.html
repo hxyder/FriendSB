@@ -442,139 +442,7 @@
   }
   .ai-user{ align-self:flex-end; background: rgba(75,107,255,.12); border-color: rgba(75,107,255,.25); }
   .ai-assistant{ align-self:flex-start; background: rgba(162,75,255,.10); border-color: rgba(162,75,255,.22); }
-/* ===== 发票翻页编辑样式 ===== */
-.invoice-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 12px;
-  background: rgba(59,92,255,0.05);
-  border-radius: 14px;
-}
-
-.invoice-nav button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.selected-text {
-  background-color: rgba(255,159,47,0.3);
-  border-radius: 3px;
-  padding: 1px 3px;
-}
-
-/* 改进的OCR原文模态框 */
-.ocr-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.7);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-
-.ocr-modal-content {
-  background: white;
-  border-radius: 20px;
-  width: 90%;
-  max-width: 900px;
-  max-height: 85vh;
-  overflow: hidden;
-  box-shadow: 0 32px 64px rgba(0,0,0,0.25);
-}
-
-.ocr-modal-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: white;
-  position: sticky;
-  top: 0;
-}
-
-.ocr-modal-body {
-  padding: 20px;
-  overflow-y: auto;
-  max-height: 60vh;
-}
-
-.ocr-text-content {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding: 16px;
-  background: #f8f9ff;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.amount-candidates {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.amount-candidate {
-  padding: 8px 12px;
-  background: rgba(59,92,255,0.1);
-  border-radius: 8px;
-  border: 1px solid rgba(59,92,255,0.2);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.amount-candidate:hover {
-  background: rgba(59,92,255,0.2);
-  transform: translateY(-2px);
-} 
-/* ===== 发票翻页编辑样式 ===== */
-.invoice-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 12px;
-  background: rgba(59,92,255,0.05);
-  border-radius: 14px;
-}
-
-.invoice-nav button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.selected-text {
-  background-color: rgba(255,159,47,0.3);
-  border-radius: 3px;
-  padding: 1px 3px;
-}
-
-.invoice-preview {
-  position: relative;
-  margin-bottom: 20px;
-  text-align: center;
-}
-
-.invoice-preview img {
-  display: block;
-  margin: 0 auto;
-  max-width: 100%;
-  height: auto;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-}    
+      
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
@@ -786,102 +654,13 @@ window.debugInvoices = () => console.log('Invoice drafts:', invoiceDrafts);
       <!-- ✅ 新增：隐藏的多选文件输入 -->
       <input id="invoiceFiles" type="file" accept="image/*" multiple style="display:none" />
       
-           
+      <!-- ✅ 新增：识别队列（放在 modalBill 里任意位置都行，建议紧跟按钮行后面） -->
+      <div id="invoiceQueueBox" style="margin-top:12px; display:none"></div>
 
     </div>
   </div>
 </div>
-<!-- 简化发票编辑模态框，移除重复内容 -->
-      <div class="modalMask" id="modalInvoiceEdit">
-        <div class="modal" style="max-width: 800px;">
-          <div class="modalHeader">
-            <div class="modalTitle">
-              发票扫描编辑 
-              <span id="invoiceEditCounter" class="badge" style="margin-left: 8px;">0/0</span>
-            </div>
-            <button class="ghost" onclick="closeInvoiceEdit()">关闭</button>
-          </div>
-          <div class="modalBody">
-            <!-- 有发票时的编辑界面 -->
-            <div id="invoiceEditContent" style="display:none;">
-              <!-- 导航按钮 -->
-              <div class="invoice-nav">
-                <button class="secondary" onclick="prevInvoice()" id="prevInvoiceBtn" disabled>上一张</button>
-                <span id="invoiceCounter">第 0 张，共 0 张</span>
-                <button class="secondary" onclick="nextInvoice()" id="nextInvoiceBtn" disabled>下一张</button>
-              </div>
-              
-              <!-- 发票图片预览 -->
-              <div class="invoice-preview">
-                <img id="invoiceEditImage" alt="发票图片预览" />
-              </div>
-              
-              <!-- 编辑表单 -->
-              <div class="card" style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(255,255,255,.75); margin-top:20px;">
-                <div class="col2">
-                  <div>
-                    <label>商家名称</label>
-                    <input id="editMerchant" type="text" placeholder="例如：The Breakfast Spot" />
-                  </div>
-                  <div>
-                    <label>金额</label>
-                    <input id="editTotal" type="number" step="0.01" placeholder="例如：100.00" />
-                  </div>
-                  <div>
-                    <label>日期</label>
-                    <input id="editDate" type="date" />
-                  </div>
-                  <div>
-                    <label>建议标题</label>
-                    <input id="editTitle" type="text" placeholder="例如：早餐发票" />
-                  </div>
-                </div>
-                
-                <div style="margin-top:12px">
-                  <label>备注</label>
-                  <textarea id="editNotes" rows="2" placeholder="可选备注信息"></textarea>
-                </div>
-                
-                <!-- OCR原文 -->
-                <div style="margin-top:12px">
-                  <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px">
-                    <label>OCR识别原文</label>
-                    <button class="secondary ghost small" onclick="selectFromOcrText()">选择金额应用到表单</button>
-                  </div>
-                  <div id="ocrTextDisplay" style="
-                    height:120px; overflow:auto; 
-                    padding:12px; background:#f8f9ff; 
-                    border-radius:12px; border:1px solid var(--line);
-                    font-family:monospace; font-size:11px; 
-                    line-height:1.4; white-space:pre-wrap;
-                    cursor:text; user-select:text;
-                  "></div>
-                </div>
-                
-                <!-- 操作按钮 -->
-                <div class="row" style="margin-top:20px; justify-content:space-between">
-                  <div class="row" style="gap:8px">
-                    <button class="danger" onclick="deleteCurrentInvoice()">删除此发票</button>
-                    <button class="secondary" onclick="skipCurrentInvoice()">跳过此发票</button>
-                  </div>
-                  <div class="row" style="gap:8px">
-                    <button class="secondary" onclick="applyCurrentInvoice()">应用到账单表单</button>
-                    <button onclick="saveAndNextInvoice()">保存并下一张</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <!-- 无发票时的提示 -->
-            <div id="invoiceEditEmpty" style="display:block; text-align:center; padding:40px 20px;">
-              <div style="font-size:48px; margin-bottom:16px;">🧾</div>
-              <div style="font-weight:950; margin-bottom:8px">没有待处理的发票</div>
-              <div class="hint">请先点击"扫描发票"按钮上传图片</div>
-              <button style="margin-top:20px;" onclick="closeInvoiceEdit(); openModal('bill')">返回添加账单</button>
-            </div>
-          </div>
-        </div>
-      </div> 
+
 <!-- Modal: Share -->
 <div class="modalMask" id="modalShare">
   <div class="modal">
@@ -1049,11 +828,6 @@ window.debugInvoices = () => console.log('Invoice drafts:', invoiceDrafts);
   import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js';
   import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js';
 
-
-
-
-
-  
   // ===== AI settings =====
   const WORKER_BASE = "https://derfriendtrip.hxy94045.workers.dev";
   const AI_TOKEN_KEY = "aa_ai_app_token_v1";
@@ -1082,7 +856,54 @@ window.debugInvoices = () => console.log('Invoice drafts:', invoiceDrafts);
     refreshAiTokenStatus();
     toast("已清除 APP_TOKEN");
   }
+// ===== 简化的Tesseract OCR =====
+async function ocrImageWithTesseract(file) {
+    // 初始化Tesseract
+    const worker = await Tesseract.createWorker({
+        logger: (m) => console.log('OCR进度:', m),
+        errorHandler: (err) => console.error('OCR错误:', err),
+    });
+    
+    try {
+        // 加载英语语言
+        await worker.loadLanguage('eng');
+        await worker.initialize('eng');
+        
+        // 设置识别参数（针对发票优化）
+        await worker.setParameters({
+            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789$.,-:/ ',
+            preserve_interword_spaces: '1',
+        });
+        
+        // 识别图片
+        const { data: { text } } = await worker.recognize(file);
+        
+        return text.trim();
+    } finally {
+        // 清理worker
+        await worker.terminate();
+    }
+}
 
+// 轻量级OCR方案（使用预训练的模型）
+async function ocrImageSimple(file) {
+    try {
+        // 创建worker
+        const worker = await Tesseract.createWorker();
+        
+        await worker.loadLanguage('eng');
+        await worker.initialize('eng');
+        
+        // 识别
+        const { data: { text } } = await worker.recognize(file);
+        
+        await worker.terminate();
+        return text;
+    } catch (error) {
+        console.error('OCR失败:', error);
+        return '';
+    }
+}
 
 // 从OCR文本中提取发票信息
 function extractInvoiceInfoFromText(ocrText) {
@@ -1162,43 +983,7 @@ function extractInvoiceInfoFromText(ocrText) {
     
     return result;
 }
-// 跳过当前发票
-function skipCurrentInvoice() {
-    if (currentInvoiceIndex < invoiceDrafts.length - 1) {
-        currentInvoiceIndex++;
-        loadCurrentInvoice();
-    } else {
-        toast('已经是最后一张发票');
-    }
-}
 
-// 保存并下一张
-function saveAndNextInvoice() {
-    // 先保存当前编辑
-    saveInvoiceEdits();
-    
-    // 如果有下一张，跳转到下一张
-    if (currentInvoiceIndex < invoiceDrafts.length - 1) {
-        currentInvoiceIndex++;
-        loadCurrentInvoice();
-        toast('已保存，加载下一张');
-    } else {
-        toast('已是最后一张，已保存');
-    }
-}
-
-// 更新导航按钮状态
-function updateNavButtons() {
-    const prevBtn = document.getElementById('prevInvoiceBtn');
-    const nextBtn = document.getElementById('nextInvoiceBtn');
-    const counter = document.getElementById('invoiceCounter');
-    
-    if (!prevBtn || !nextBtn || !counter) return;
-    
-    prevBtn.disabled = currentInvoiceIndex <= 0;
-    nextBtn.disabled = currentInvoiceIndex >= invoiceDrafts.length - 1;
-    counter.textContent = `第 ${currentInvoiceIndex + 1} 张，共 ${invoiceDrafts.length} 张`;
-}  
   // ===== AI UI =====
   function renderAiMsgs(){
     const box = document.getElementById("aiMsgs");
@@ -1619,10 +1404,6 @@ function saveLocal(){
 
   // ========= 弹窗 =========
   function openModal(which){
-    if (which === "invoiceEdit") {
-    openInvoiceEdit();
-    return;
-    }
     if(which==="person") $("modalPerson").style.display="flex";
     if(which==="ai"){
       document.getElementById("modalAI").style.display="flex";
@@ -1676,10 +1457,6 @@ function saveLocal(){
 window.openAiEntry = openAiEntry;
 
   function closeModal(which){
-    if (which === "invoiceEdit") {
-    closeInvoiceEdit();
-    return;
-    }
     if(which==="person") $("modalPerson").style.display="none";
     if(which==="ai") document.getElementById("modalAI").style.display="none";
     if(which==="aiSettings") document.getElementById("modalAISettings").style.display="none";
@@ -1759,284 +1536,112 @@ window.openAiEntry = openAiEntry;
     return obj;
   }
   
-// 入口：点击"扫描发票"
-function scanInvoices() {
-    if (editingBillId) {
-        toast("请先保存/取消当前编辑，再扫描发票");
-        return;
+  // 入口：点击“扫描发票”
+  function scanInvoices(){
+    // 不建议在“编辑账单模式”里扫描，避免混乱
+    if(editingBillId){
+      toast("请先保存/取消当前编辑，再扫描发票");
+      return;
     }
-    
-    // 清除已有的发票
-    if (invoiceDrafts.length > 0) {
-        if (!confirm(`已有 ${invoiceDrafts.length} 张待处理发票，是否继续上传新发票？`)) {
-            return;
-        }
-        clearAllInvoices();
-    }
-    
     const input = document.getElementById("invoiceFiles");
-    if (!input) return;
+    if(!input) return;
     input.value = "";
     input.click();
-}
+  }
   
-// 绑定 input change（只绑定一次）
-function bindInvoiceInputOnce() {
+  // 绑定 input change（只绑定一次）
+  function bindInvoiceInputOnce(){
     const input = document.getElementById("invoiceFiles");
-    if (!input || input.dataset.bound) return;
+    if(!input || input.dataset.bound) return;
     input.dataset.bound = "1";
-
-    input.addEventListener("change", async () => {
-        const files = Array.from(input.files || []);
-        if (files.length === 0) return;
-
-        // 清空之前的队列
-        clearAllInvoices();
-        
-        // 添加新文件到队列
-        for (const f of files) {
-            const id = uid();
-            invoiceDrafts.push({
-                id,
-                file: f,
-                name: f.name || "发票",
-                previewUrl: URL.createObjectURL(f),
-                status: "queued",
-                ocrText: "",
-                parsed: null,
-                err: "",
-                applied: false,
-                added: false,
-            });
-        }
-        
-        // 直接打开翻页编辑界面
-        openInvoiceEdit(0);
-        
-        // 开始处理第一张发票
-        if (invoiceDrafts.length > 0) {
-            await processInvoice(currentInvoiceIndex);
-        }
+  
+    input.addEventListener("change", async ()=>{
+      const files = Array.from(input.files || []);
+      if(files.length === 0) return;
+  
+      // 建队列
+      for(const f of files){
+        const id = uid();
+        invoiceDrafts.push({
+          id,
+          file: f,
+          name: f.name || "invoice",
+          previewUrl: URL.createObjectURL(f),
+          status: "queued",
+          ocrText: "",
+          parsed: null,
+          err: "",
+          applied: false,
+          added: false,
+        });
+      }
+      renderInvoiceQueue();
+      // 串行处理（避免你 4次/分钟 限流）
+      await processInvoiceQueueSerial();
     });
-}
+  }
   
   let _invoiceProcessing = false;
-// 从OCR文本中提取金额候选
-function extractAmountCandidates(ocrText) {
-    const candidates = new Set();
-    
-    // 匹配各种金额格式
-    const patterns = [
-        /\$?\s*(\d+\.\d{2})\b/g,           // $22.08 或 22.08
-        /total.*?\$?\s*(\d+\.\d{2})/gi,    // Total: $22.08
-        /amount.*?\$?\s*(\d+\.\d{2})/gi,   // Amount: 22.08
-        /(\d+\.\d{2})\s*(?:USD|美元)?\b/g, // 22.08 USD
-        /\b(\d{1,3}(?:,\d{3})*\.\d{2})\b/g // 1,000.00
-    ];
-    
-    patterns.forEach(pattern => {
-        let match;
-        while ((match = pattern.exec(ocrText)) !== null) {
-            const amount = parseFloat(match[1].replace(/,/g, ''));
-            if (!isNaN(amount) && amount > 0 && amount < 1000000) {
-                candidates.add(amount);
-            }
-        }
-    });
-    
-    return Array.from(candidates).sort((a, b) => a - b);
-}
-// ===== 发票翻页编辑逻辑 =====
-let currentInvoiceIndex = -1;
-let selectingFromOcr = false;
 
-// 打开发票编辑模态框
-function openInvoiceEdit(index = 0) {
-    if (invoiceDrafts.length === 0) {
-        document.getElementById('invoiceEditEmpty').style.display = 'block';
-        document.getElementById('invoiceEditContent').style.display = 'none';
-    } else {
-        currentInvoiceIndex = Math.max(0, Math.min(index, invoiceDrafts.length - 1));
-        document.getElementById('invoiceEditEmpty').style.display = 'none';
-        document.getElementById('invoiceEditContent').style.display = 'block';
-        loadCurrentInvoice();
-    }
-    document.getElementById('modalInvoiceEdit').style.display = 'flex';
-}
+async function processInvoiceQueueSerial() {
+    if (_invoiceProcessing) return;
+    _invoiceProcessing = true;
 
-// 关闭发票编辑模态框
-function closeInvoiceEdit() {
-    document.getElementById('modalInvoiceEdit').style.display = 'none';
-    currentInvoiceIndex = -1;
-}
-
-// 加载当前发票
-function loadCurrentInvoice() {
-    if (currentInvoiceIndex < 0 || currentInvoiceIndex >= invoiceDrafts.length) return;
-    
-    const item = invoiceDrafts[currentInvoiceIndex];
-    const p = item.parsed || {};
-    
-    // 更新计数器
-    document.getElementById('invoiceEditCounter').textContent = `${currentInvoiceIndex + 1}/${invoiceDrafts.length}`;
-    
-    // 显示图片
-    document.getElementById('invoiceEditImage').src = item.previewUrl;
-    
-    // 填充表单
-    document.getElementById('editMerchant').value = p.merchant || '';
-    document.getElementById('editTotal').value = p.total || 0;
-    document.getElementById('editDate').value = p.invoice_date || '';
-    document.getElementById('editTitle').value = p.suggest_title || '';
-    document.getElementById('editNotes').value = p.notes || '';
-    
-    // 显示OCR原文
-    const ocrText = item.ocrText || '未识别到文字';
-    document.getElementById('ocrTextDisplay').textContent = ocrText;
-    
-    // 更新按钮状态
-    updateNavButtons();
-}
-
-// 更新导航按钮状态
-function updateNavButtons() {
-    // 这个函数可以留空，因为我们会在需要时直接处理
-}
-
-// 上一张发票
-function prevInvoice() {
-    if (currentInvoiceIndex > 0) {
-        currentInvoiceIndex--;
-        loadCurrentInvoice();
-    }
-}
-
-// 下一张发票
-function nextInvoice() {
-    if (currentInvoiceIndex < invoiceDrafts.length - 1) {
-        currentInvoiceIndex++;
-        loadCurrentInvoice();
-    }
-}  
-// 删除当前发票
-function deleteCurrentInvoice() {
-    if (currentInvoiceIndex < 0 || currentInvoiceIndex >= invoiceDrafts.length) return;
-    
-    const item = invoiceDrafts[currentInvoiceIndex];
-    if (item.previewUrl) {
-        URL.revokeObjectURL(item.previewUrl);
-    }
-    
-    // 删除当前发票
-    invoiceDrafts.splice(currentInvoiceIndex, 1);
-    
-    // 如果还有发票，显示下一张
-    if (invoiceDrafts.length > 0) {
-        if (currentInvoiceIndex >= invoiceDrafts.length) {
-            currentInvoiceIndex = invoiceDrafts.length - 1;
-        }
-        loadCurrentInvoice();
-    } else {
-        // 没有发票了，显示空状态
-        document.getElementById('invoiceEditEmpty').style.display = 'block';
-        document.getElementById('invoiceEditContent').style.display = 'none';
-    }
-    
-    toast('已删除发票');
-}  
-// 保存当前编辑
-function saveInvoiceEdits() {
-    if (currentInvoiceIndex < 0 || currentInvoiceIndex >= invoiceDrafts.length) return;
-    
-    const item = invoiceDrafts[currentInvoiceIndex];
-    if (!item.parsed) item.parsed = {};
-    
-    item.parsed.merchant = document.getElementById('editMerchant').value.trim() || '未知商家';
-    item.parsed.total = parseFloat(document.getElementById('editTotal').value) || 0;
-    item.parsed.invoice_date = document.getElementById('editDate').value || new Date().toISOString().split('T')[0];
-    item.parsed.suggest_title = document.getElementById('editTitle').value.trim() || '发票';
-    item.parsed.notes = document.getElementById('editNotes').value.trim() || '';
-    
-    toast('已保存修改');
-}  
-// 应用到账单表单
-function applyCurrentInvoice() {
-    if (currentInvoiceIndex < 0 || currentInvoiceIndex >= invoiceDrafts.length) return;
-    
-    const item = invoiceDrafts[currentInvoiceIndex];
-    applyInvoiceToBillForm(item.id);
-    
-    // 标记为已应用
-    item.applied = true;
-    
-    // 关闭编辑模态框，返回账单表单
-    closeModal('invoiceEdit');
-    toast('已应用到账单表单');
-}  
-// 从OCR应用金额
-function applyAmountFromOcr(amount, id) {
-    const item = invoiceDrafts.find(x => x.id === id);
-    if (item && item.parsed) {
-        item.parsed.total = amount;
-        
-        // 如果正在编辑这张发票，更新表单
-        if (currentInvoiceIndex >= 0 && invoiceDrafts[currentInvoiceIndex].id === id) {
-            document.getElementById('editTotal').value = amount.toFixed(2);
-        }
-        
-        // 关闭模态框
-        document.querySelector('.ocr-modal')?.remove();
-        
-        toast(`已应用金额: $${amount.toFixed(2)}`);
-    }
-}  
-// 应用选中的文本到金额
-function applySelectedTextFromOcr(id) {
-    const selection = window.getSelection();
-    const selectedText = selection.toString().trim();
-    
-    if (!selectedText) {
-        toast('请先在原文中选择金额数字');
-        return;
-    }
-    
-    const numberMatch = selectedText.match(/(\d+(?:\.\d{2})?)/);
-    if (numberMatch && numberMatch[1]) {
-        const amount = parseFloat(numberMatch[1]);
-        applyAmountFromOcr(amount, id);
-    } else {
-        toast('选中的内容不是有效的金额数字');
-    }
-}
-// 修改原有的发票处理完成逻辑，自动打开编辑界面
-// 简化发票处理逻辑
-async function processInvoice(index) {
-    if (index < 0 || index >= invoiceDrafts.length) return;
-    
-    const item = invoiceDrafts[index];
-    item.status = 'processing';
-    
     try {
-        const result = await recognizeInvoice(item.file);
-        
-        if (result.success) {
-            item.parsed = result.data;
-            item.ocrText = result.rawText;
-            item.status = 'ready';
-            
-            // 自动加载到编辑表单
-            loadCurrentInvoice();
-        } else {
-            item.status = 'error';
-            item.err = result.error || '识别失败';
-            loadCurrentInvoice();
+        for (const item of invoiceDrafts) {
+            if (item.status !== 'queued') continue;
+
+            item.status = 'processing';
+            renderInvoiceQueue();
+
+            try {
+                console.log('处理发票:', item.name);
+                
+                // 使用Tesseract.js进行OCR识别
+                const result = await recognizeInvoice(item.file);
+                
+                if (result.success) {
+                    item.parsed = result.data;
+                    item.ocrText = result.rawText; // 保存原始OCR文本
+                    item.status = 'ready';
+                    toast(`✅ ${item.name} 识别完成`);
+                } else {
+                    item.status = 'ready';
+                    item.parsed = result.data;
+                    item.err = result.error || '识别失败';
+                    toast(`⚠️ ${item.name} 识别失败，请手动填写`);
+                }
+                
+                renderInvoiceQueue();
+                
+                // 如果是第一个成功的识别，自动应用到表单
+                if (result.success && !currentAppliedInvoiceId) {
+                    setTimeout(() => {
+                        applyInvoiceToBillForm(item.id);
+                    }, 500);
+                }
+                
+            } catch (error) {
+                console.error('处理发票时出错:', error);
+                item.status = 'ready';
+                item.parsed = {
+                    merchant: '处理失败',
+                    invoice_date: new Date().toISOString().split('T')[0],
+                    total: 0,
+                    currency: 'USD',
+                    suggest_title: '发票',
+                    notes: `处理失败: ${error.message}`
+                };
+                item.err = error.message;
+                renderInvoiceQueue();
+                toast(`❌ ${item.name} 处理失败`);
+            }
+
+            // 添加延迟，避免同时处理多张图片
+            await new Promise(r => setTimeout(r, 1000));
         }
-        
-    } catch (error) {
-        console.error('处理发票时出错:', error);
-        item.status = 'error';
-        item.err = error.message;
-        loadCurrentInvoice();
+    } finally {
+        _invoiceProcessing = false;
     }
 }
 
@@ -2054,139 +1659,147 @@ async function fileToBase64(file) {
     reader.readAsDataURL(file);
   });
 }
-// 添加缺失的selectFromOcrText函数
-function selectFromOcrText() {
-    const ocrTextElement = document.getElementById('ocrTextDisplay');
-    if (!ocrTextElement) return;
-    
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed) {
-        toast('请先在OCR原文中选择文本');
+
+  
+function renderInvoiceQueue() {
+    const box = document.getElementById('invoiceQueueBox');
+    if (!box) return;
+
+    if (invoiceDrafts.length === 0) {
+        box.style.display = 'none';
+        box.innerHTML = '';
         return;
     }
-    
-    const selectedText = selection.toString().trim();
-    if (!selectedText) {
-        toast('请选择文本内容');
-        return;
-    }
-    
-    // 尝试从选中文本中提取金额
-    const amountMatch = selectedText.match(/(\d+(?:\.\d{2})?)/);
-    if (amountMatch && amountMatch[1]) {
-        const amount = parseFloat(amountMatch[1]);
-        document.getElementById('editTotal').value = amount.toFixed(2);
-        toast(`已设置金额: $${amount.toFixed(2)}`);
-    } else {
-        toast('选中的文本中未找到金额数字');
-    }
-}
-  
-// 清空所有发票
-function clearAllInvoices() {
-    if (invoiceDrafts.length === 0) return;
-    
-    if (confirm(`确定要清空 ${invoiceDrafts.length} 张发票吗？`)) {
-        // 释放所有图片URL
-        invoiceDrafts.forEach(item => {
-            if (item.previewUrl) {
-                URL.revokeObjectURL(item.previewUrl);
-            }
-        });
+
+    box.style.display = 'block';
+    box.innerHTML = `
+        <div class="card" style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(255,255,255,.75)">
+            <div style="font-weight:950">发票识别队列（${invoiceDrafts.length}）</div>
+            <div class="hint" style="margin-top:6px">
+                <span class="badge" style="background:var(--cyan)">使用Tesseract.js OCR</span>
+                自动识别发票信息，请核对并编辑
+            </div>
+            <div class="hr"></div>
+            <div id="invoiceQueueList" style="display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
+    `;
+
+    const list = document.getElementById('invoiceQueueList');
+    invoiceDrafts.slice().reverse().forEach(item => {
+        const p = item.parsed || {};
         
-        invoiceDrafts = [];
-        currentAppliedInvoiceId = null;
-        currentInvoiceIndex = -1;
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.style.boxShadow = 'none';
+        div.style.borderRadius = '14px';
+        div.style.border = '1px solid var(--line)';
+        div.style.background = 'rgba(255,255,255,.9)';
         
-        renderInvoiceQueue();
-        toast('已清空所有发票');
-    }
-}
-  
-// 高亮选中的文本
-function highlightSelectedText(element, selection) {
-    if (!selection.rangeCount) return;
-    
-    const range = selection.getRangeAt(0);
-    const span = document.createElement('span');
-    span.className = 'selected-text';
-    
-    // 用span包裹选中的文本
-    range.surroundContents(span);
-    
-    // 3秒后移除高亮
-    setTimeout(() => {
-        if (span.parentNode) {
-            span.parentNode.replaceChild(document.createTextNode(span.textContent), span);
+        let statusBadge = '';
+        if (item.status === 'queued') {
+            statusBadge = '<span class="badge" style="background:var(--muted)">等待中</span>';
+        } else if (item.status === 'processing') {
+            statusBadge = '<span class="badge" style="background:var(--cyan)">识别中...</span>';
+        } else if (item.status === 'ready') {
+            statusBadge = '<span class="badge" style="background:var(--good)">✅ 已识别</span>';
         }
-    }, 3000);
-}  
-// 改进的OCR原文查看功能
-function showOcrTextModal(id) {
+        
+        div.innerHTML = `
+            <div class="row" style="justify-content:space-between; align-items:flex-start">
+                <div class="row" style="gap:10px; align-items:flex-start">
+                    <img src="${item.previewUrl}" style="width:54px;height:54px;object-fit:cover;border-radius:12px;border:1px solid var(--line)" />
+                    <div>
+                        <div style="font-weight:950">${escapeHtml(item.name)}</div>
+                        <div style="margin-top:4px">${statusBadge}</div>
+                        ${item.err ? `<div class="small" style="color:var(--bad);margin-top:4px">${escapeHtml(item.err)}</div>` : ''}
+                    </div>
+                </div>
+                
+                <div class="row" style="gap:8px; align-items:center">
+                    ${item.status === 'ready' ? `
+                        <button class="secondary small" onclick="applyInvoiceToBillForm('${item.id}')">应用到表单</button>
+                    ` : ''}
+                    ${item.ocrText ? `
+                        <button class="ghost small" onclick="showOcrText('${item.id}')">查看原文</button>
+                    ` : ''}
+                    <button class="danger ghost small" onclick="removeInvoice('${item.id}')">移除</button>
+                </div>
+            </div>
+            
+            ${item.status === 'ready' && item.parsed ? `
+                <div style="margin-top:12px; padding:12px; background:rgba(59,92,255,0.05); border-radius:12px">
+                    <div class="small" style="font-weight:900;margin-bottom:8px;color:var(--pri)">识别结果：</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px">
+                        <div>
+                            <label class="small muted">商家</label>
+                            <input type="text" value="${escapeHtml(p.merchant || '')}" 
+                                   class="small" style="width:100%;padding:6px;border-radius:8px;border:1px solid var(--line)"
+                                   onchange="updateInvoiceField('${item.id}', 'merchant', this.value)" />
+                        </div>
+                        <div>
+                            <label class="small muted">金额</label>
+                            <input type="number" step="0.01" value="${p.total || 0}" 
+                                   class="small" style="width:100%;padding:6px;border-radius:8px;border:1px solid var(--line)"
+                                   onchange="updateInvoiceField('${item.id}', 'total', this.value)" />
+                        </div>
+                        <div>
+                            <label class="small muted">日期</label>
+                            <input type="date" value="${p.invoice_date || ''}" 
+                                   class="small" style="width:100%;padding:6px;border-radius:8px;border:1px solid var(--line)"
+                                   onchange="updateInvoiceField('${item.id}', 'invoice_date', this.value)" />
+                        </div>
+                        <div>
+                            <label class="small muted">标题</label>
+                            <input type="text" value="${escapeHtml(p.suggest_title || '')}" 
+                                   class="small" style="width:100%;padding:6px;border-radius:8px;border:1px solid var(--line)"
+                                   onchange="updateInvoiceField('${item.id}', 'suggest_title', this.value)" />
+                        </div>
+                    </div>
+                    ${p.notes ? `
+                        <div style="margin-top:8px">
+                            <label class="small muted">备注</label>
+                            <textarea class="small" style="width:100%;padding:6px;border-radius:8px;border:1px solid var(--line);min-height:40px;font-size:11px"
+                                      onchange="updateInvoiceField('${item.id}', 'notes', this.value)">${escapeHtml(p.notes)}</textarea>
+                        </div>
+                    ` : ''}
+                </div>
+            ` : ''}
+        `;
+        
+        list.appendChild(div);
+    });
+}
+
+// 显示OCR原始文本的函数
+function showOcrText(id) {
     const item = invoiceDrafts.find(x => x.id === id);
     if (!item || !item.ocrText) return;
     
-    // 创建模态框
+    // 创建弹窗显示OCR文本
     const modal = document.createElement('div');
-    modal.className = 'ocr-modal';
     modal.style.cssText = `
         position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.7); display: flex; align-items: center;
+        background: rgba(0,0,0,0.5); display: flex; align-items: center;
         justify-content: center; z-index: 1000; padding: 20px;
     `;
     
-    // 提取可能的金额候选
-    const amountCandidates = extractAmountCandidates(item.ocrText);
-    
     modal.innerHTML = `
-        <div class="ocr-modal-content">
-            <div class="ocr-modal-header">
-                <div style="font-weight:950">OCR识别原文</div>
-                <button onclick="this.closest('.ocr-modal').remove()" style="
-                    background: none; border: none; font-size: 24px; 
-                    cursor: pointer; color: var(--text); width: 40px; height: 40px;
-                    display: flex; align-items: center; justify-content: center;
-                    border-radius: 50%; transition: background 0.2s;
-                " onmouseover="this.style.background='rgba(0,0,0,0.1)'" 
-                   onmouseout="this.style.background='transparent'">×</button>
+        <div style="background: white; border-radius: 16px; padding: 20px; max-width: 800px; max-height: 80vh; overflow: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0;">OCR识别原文</h3>
+                <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
             </div>
-            <div class="ocr-modal-body">
-                <div class="ocr-text-content" id="ocrContentSelectable">${escapeHtml(item.ocrText)}</div>
-                
-                ${amountCandidates.length > 0 ? `
-                    <div style="margin-top: 20px;">
-                        <div style="font-weight:950; margin-bottom: 12px;">金额候选（点击应用）:</div>
-                        <div class="amount-candidates">
-                            ${amountCandidates.map(amount => `
-                                <div class="amount-candidate" onclick="applyAmountFromOcr(${amount}, '${id}')">
-                                    $${amount.toFixed(2)}
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                ` : ''}
-                
-                <div style="margin-top: 20px; text-align: right;">
-                    <button onclick="applySelectedTextFromOcr('${id}')" style="
-                        padding: 10px 20px; border-radius: 12px; 
-                        background: var(--pri); color: white; 
-                        border: none; cursor: pointer; font-weight: 900;
-                    ">应用选中文本到金额</button>
-                </div>
+            <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; font-family: monospace; white-space: pre-wrap; max-height: 60vh; overflow: auto;">
+                ${escapeHtml(item.ocrText.substring(0, 5000))}
+            </div>
+            <div style="margin-top: 16px; text-align: right;">
+                <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" style="padding: 8px 16px; border-radius: 8px; background: var(--pri); color: white; border: none; cursor: pointer;">关闭</button>
             </div>
         </div>
     `;
     
     document.body.appendChild(modal);
-    
-    // 点击模态框背景关闭
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.remove();
-        }
-    });
 }
-
 // 图片预处理函数（提高OCR准确率）
 async function preprocessImageForOCR(file) {
     return new Promise((resolve, reject) => {
@@ -3208,20 +2821,7 @@ window.applyInvoiceToBillForm = applyInvoiceToBillForm;
 window.removeInvoice = removeInvoice;
 window.showOcrText = showOcrText;
 window.updateInvoiceField = updateInvoiceField;
-window.openInvoiceEdit = openInvoiceEdit;
-window.closeInvoiceEdit = closeInvoiceEdit;
-window.prevInvoice = prevInvoice;
-window.nextInvoice = nextInvoice;
-window.deleteCurrentInvoice = deleteCurrentInvoice;
-window.saveInvoiceEdits = saveInvoiceEdits;
-window.applyCurrentInvoice = applyCurrentInvoice;
-window.selectFromOcrText = selectFromOcrText;
-window.showOcrTextModal = showOcrTextModal;
-window.applyAmountFromOcr = applyAmountFromOcr;
-window.applySelectedTextFromOcr = applySelectedTextFromOcr;
-window.clearAllInvoices = clearAllInvoices;
-window.skipCurrentInvoice = skipCurrentInvoice;
-window.saveAndNextInvoice = saveAndNextInvoice;  
+
   // ========= 初始化 =========
   loadLocal();
   renderAll();
@@ -3266,37 +2866,3 @@ window.saveAndNextInvoice = saveAndNextInvoice;
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
