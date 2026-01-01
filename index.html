@@ -1343,34 +1343,6 @@ async function preprocessImageToBlob(file){
 }
 
 // 进度回调：你传 itemId 进来更新 UI
-async function getOcrWorker(lang, onProgress){
-  const T = await ensureTesseractUMD();
-
-  if(!_ocrWorker){
-    _ocrWorker = await T.createWorker({
-      logger: (m)=>{
-        // m: { status, progress }
-        if(onProgress) onProgress(m);
-      },
-      workerPath: `${TESS_BASE}/worker.min.js`,
-      corePath: `${TESS_BASE}/tesseract-core.wasm.js`,
-      langPath: TESS_LANG,
-    });
-  }
-
-  // 如果语言没初始化过或换了语言，才重新初始化
-  if(_ocrLangInited !== lang){
-    try{
-      await _ocrWorker.loadLanguage(lang);
-      await _ocrWorker.initialize(lang);
-      _ocrLangInited = lang;
-    }catch(e){
-      throw new Error(`语言初始化失败(${lang})：` + (e?.message || String(e)));
-    }
-  }
-
-  return _ocrWorker;
-}
 
 async function preprocessImageToBlob(file){
   const bmp = await createImageBitmap(file);
@@ -2573,6 +2545,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
