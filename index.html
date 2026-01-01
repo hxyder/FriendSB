@@ -866,7 +866,7 @@
     const { owed, paid, net } = computeTotals();
     const transfers = computeSettlement(net);
   
-    const billsBrief = state.bills.slice(0, 8).map(b=>{
+    const billsBrief = state.bills.map(b=>{
       const billDays = daysInclusive(b.start, b.end);
       const ps = (b.participants||[]).length;
       return `- ${b.title} | payer=${b.payer} | $${Number(b.amount||0).toFixed(2)} | ${billDays}天 | ${ps}人`;
@@ -2154,6 +2154,7 @@ function syncFilterUI(){
 </script>
 </body>
 </html>
+
 
 
 
