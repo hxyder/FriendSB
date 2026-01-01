@@ -538,7 +538,43 @@
 .amount-candidate:hover {
   background: rgba(59,92,255,0.2);
   transform: translateY(-2px);
-}      
+} 
+/* ===== 发票翻页编辑样式 ===== */
+.invoice-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: rgba(59,92,255,0.05);
+  border-radius: 14px;
+}
+
+.invoice-nav button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.selected-text {
+  background-color: rgba(255,159,47,0.3);
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+
+.invoice-preview {
+  position: relative;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.invoice-preview img {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+}    
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
@@ -750,7 +786,12 @@ window.debugInvoices = () => console.log('Invoice drafts:', invoiceDrafts);
       <!-- ✅ 新增：隐藏的多选文件输入 -->
       <input id="invoiceFiles" type="file" accept="image/*" multiple style="display:none" />
       
-      <!-- 简化发票编辑模态框，移除重复内容 -->
+           
+
+    </div>
+  </div>
+</div>
+<!-- 简化发票编辑模态框，移除重复内容 -->
       <div class="modalMask" id="modalInvoiceEdit">
         <div class="modal" style="max-width: 800px;">
           <div class="modalHeader">
@@ -840,12 +881,7 @@ window.debugInvoices = () => console.log('Invoice drafts:', invoiceDrafts);
             </div>
           </div>
         </div>
-      </div>      
-
-    </div>
-  </div>
-</div>
-
+      </div> 
 <!-- Modal: Share -->
 <div class="modalMask" id="modalShare">
   <div class="modal">
@@ -1126,7 +1162,43 @@ function extractInvoiceInfoFromText(ocrText) {
     
     return result;
 }
-  
+// 跳过当前发票
+function skipCurrentInvoice() {
+    if (currentInvoiceIndex < invoiceDrafts.length - 1) {
+        currentInvoiceIndex++;
+        loadCurrentInvoice();
+    } else {
+        toast('已经是最后一张发票');
+    }
+}
+
+// 保存并下一张
+function saveAndNextInvoice() {
+    // 先保存当前编辑
+    saveInvoiceEdits();
+    
+    // 如果有下一张，跳转到下一张
+    if (currentInvoiceIndex < invoiceDrafts.length - 1) {
+        currentInvoiceIndex++;
+        loadCurrentInvoice();
+        toast('已保存，加载下一张');
+    } else {
+        toast('已是最后一张，已保存');
+    }
+}
+
+// 更新导航按钮状态
+function updateNavButtons() {
+    const prevBtn = document.getElementById('prevInvoiceBtn');
+    const nextBtn = document.getElementById('nextInvoiceBtn');
+    const counter = document.getElementById('invoiceCounter');
+    
+    if (!prevBtn || !nextBtn || !counter) return;
+    
+    prevBtn.disabled = currentInvoiceIndex <= 0;
+    nextBtn.disabled = currentInvoiceIndex >= invoiceDrafts.length - 1;
+    counter.textContent = `第 ${currentInvoiceIndex + 1} 张，共 ${invoiceDrafts.length} 张`;
+}  
   // ===== AI UI =====
   function renderAiMsgs(){
     const box = document.getElementById("aiMsgs");
@@ -3148,6 +3220,8 @@ window.showOcrTextModal = showOcrTextModal;
 window.applyAmountFromOcr = applyAmountFromOcr;
 window.applySelectedTextFromOcr = applySelectedTextFromOcr;
 window.clearAllInvoices = clearAllInvoices;
+window.skipCurrentInvoice = skipCurrentInvoice;
+window.saveAndNextInvoice = saveAndNextInvoice;  
   // ========= 初始化 =========
   loadLocal();
   renderAll();
@@ -3192,6 +3266,7 @@ window.clearAllInvoices = clearAllInvoices;
 </script>
 </body>
 </html>
+
 
 
 
