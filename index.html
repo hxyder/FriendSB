@@ -444,6 +444,25 @@
   }
   .ai-user{ align-self:flex-end; background: rgba(75,107,255,.12); border-color: rgba(75,107,255,.25); }
   .ai-assistant{ align-self:flex-start; background: rgba(162,75,255,.10); border-color: rgba(162,75,255,.22); }
+.seg{
+  display:inline-flex;
+  border:1px solid rgba(18,22,42,.14);
+  border-radius:999px;
+  overflow:hidden;
+  background: rgba(255,255,255,.70);
+}
+.segBtn{
+  padding:8px 12px;
+  border-radius:0;
+  background:transparent;
+  color:var(--text);
+  border:none;
+  box-shadow:none;
+  font-weight:950;
+}
+.segBtn.active{
+  background: linear-gradient(90deg, rgba(59,92,255,.16), rgba(178,75,255,.10));
+}
       
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -675,6 +694,13 @@ window.debugInvoices = () => console.log('Invoice drafts:', invoiceDrafts);
           <label>付款人（谁垫付）</label>
           <select id="billPayer"></select>
         </div>
+        
+        <label>分摊方式</label>
+        <select id="billSplitMode">
+          <option value="days">按天数</option>
+          <option value="items">按Items</option>
+        </select>
+
         <div>
           <label>账单天数（自动）</label>
           <input id="billDays" disabled />
@@ -1527,6 +1553,7 @@ function saveLocal(){
       editingBillId = null; // ✅ 默认进入创建模式
       editingFromBillDraft = false;
       seedBillForm();
+      document.getElementById("billSplitMode").value = "days";
       // 标题/按钮文字
       document.querySelector("#modalBill .modalTitle").textContent = "添加账单";
       $("billSaveBtn").textContent = "创建";
@@ -2375,7 +2402,7 @@ function removeCurrentBillDraft(){
     const start=$("billStart").value;
     const end=$("billEnd").value;
     const payer=$("billPayer").value;
-
+    const splitMode = document.getElementById("billSplitMode")?.value || "days";
     const billDays=daysInclusive(start,end);
     const selected=[...$("billParticipantsChecks").querySelectorAll("input[type=checkbox]:checked")].map(x=>x.value);
 
@@ -2400,6 +2427,32 @@ function removeCurrentBillDraft(){
       b.subtotal = (subtotal != null) ? Math.max(0, subtotal) : null;
       b.tipPercent = isFinite(tipPercent) ? tipPercent : 0;
       b.baseSubtotal = isFinite(baseSubtotal) ? Math.max(0, baseSubtotal) : null;
+      // 记录旧模式（用于从 days->items / items->days 时做初始化）
+      const prevMode = b.splitMode || "days";
+      b.splitMode = splitMode;
+      
+      // 如果切到 items 且没有 items，就自动生成一个默认项
+      if (b.splitMode === "items") {
+        b.items = Array.isArray(b.items) ? b.items : [];
+        if (b.items.length === 0) {
+          b.items.push(splitMode: splitMode,
+          items: (splitMode === "items")
+            ? [{
+                id: uid(),              
+                name: "消费项1",
+                cents: toCents(amount), 
+                members: [...participantsSelected]
+              }]
+            : []);
+        } else {
+          // 可选：如果参与人变了，帮它“补齐/剔除”members（不强制）
+          b.items.forEach(it => {
+            it.members = Array.isArray(it.members) ? it.members : [];
+            it.members = it.members.filter(n => participantsSelected.includes(n));
+          });
+        }
+      }
+      
       const oldMap = new Map((b.participants||[]).map(p=>[p.name, p.days]));
       b.participants = participantsSelected.map(name=>({
         name,
@@ -2479,6 +2532,7 @@ if (!b.items) {
     seedBillForm();
   
     // 回填字段
+    document.getElementById("billSplitMode").value = b.splitMode || "days";
     $("billTitle").value = b.title || "";
     $("billAmount").value = (Number(b.amount)||0).toFixed(2).replace(/\.00$/,""); // 1200.00 => 1200
     $("billStart").value = b.start || "";
@@ -2538,6 +2592,35 @@ if (!b.items) {
 
   // ========= 分摊/结算 =========
   function computeAllocCents(bill){
+  const amountC = toCents(bill.amount);
+  const billDays = daysInclusive(bill.start, bill.end);
+
+  // ===== items 模式 =====
+  if ((bill.splitMode || "items") === "items"){
+    const people = state.people.map(p => (typeof p === "string" ? p : p.name));
+    const owed = new Map(people.map(n => [n, 0]));
+
+    const items = Array.isArray(bill.items) ? bill.items : [];
+    for (const it of items){
+      const cents = Number(it.cents)||0;
+      const members = Array.isArray(it.members) ? it.members : [];
+
+      const names = members.length ? members : []; // 没选就不给任何人分（也可以按全员分，看你规则）
+      if (names.length === 0) continue;
+
+      const each = Math.floor(cents / names.length);
+      let rem = cents - each * names.length;
+
+      for (const n of names){
+        owed.set(n, (owed.get(n)||0) + each + (rem>0 ? 1 : 0));
+        if (rem>0) rem--;
+      }
+    }
+
+    const alloc = Array.from(owed.entries()).map(([name, shareC])=>({name, shareC}));
+    const totalPersonDays = 0; // items 模式不需要
+    return { amountC, totalPersonDays, alloc };
+  }    
     const amountC=toCents(bill.amount);
     const ps=bill.participants||[];
     const totalPersonDays = ps.reduce((s,p)=>s+(Number(p.days)||0),0);
@@ -2781,6 +2864,7 @@ function syncFilterUI(){
       const tb = table.querySelector("tbody");
   
       bills.forEach(b=>{
+        b.splitMode = b.splitMode || "items"; // 兜底
         const billDays = daysInclusive(b.start, b.end);
         const amountC = toCents(b.amount);
         const peopleCount = (b.participants||[]).length;
@@ -2842,11 +2926,22 @@ function syncFilterUI(){
                 总人天：<span class="mono">${totalPersonDays}</span>
               </div>
         
-              <div class="row" style="margin-top:8px">
-                <span class="badge">付款人</span>
-                <select data-role="payer" style="min-width:160px">${payerOptions}</select>
-                <button class="secondary ghost" data-act="setAll">一键全程</button>
+              <div class="row" style="margin-top:8px; justify-content:space-between; align-items:center">
+                <div class="row" style="gap:10px">
+                  <span class="badge">付款人</span>
+                  <select data-role="payer" style="min-width:160px">${payerOptions}</select>
+                  <button class="secondary ghost" data-act="setAll">一键全程</button>
+                </div>
+              
+                <div class="row" style="gap:10px">
+                  <span class="badge">分摊方式</span>
+                  <div class="seg" data-role="modeSeg">
+                    <button class="segBtn" data-act="modeDays">按天数</button>
+                    <button class="segBtn" data-act="modeItems">按Items</button>
+                  </div>
+                </div>
               </div>
+
             </div>
           </div>
       </div>
@@ -2862,32 +2957,34 @@ function syncFilterUI(){
           <div class="hr"></div>
           
           <div class="hr"></div>
-          
-          <div class="bill-items card" style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(255,255,255,.75)">
-            <div class="row" style="justify-content:space-between; align-items:center">
-              <h2 style="margin:0">消费项 Items（按项分摊）</h2>
-              <button class="secondary ghost" data-act="addItem">+ 添加项</button>
+          <div data-role="itemsWrap">
+            <div class="bill-items card" style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(255,255,255,.75)">
+              <div class="row" style="justify-content:space-between; align-items:center">
+                <h2 style="margin:0">消费项 Items（按项分摊）</h2>
+                <button class="secondary ghost" data-act="addItem">+ 添加项</button>
+              </div>
+            
+              <div class="hint" style="margin-top:6px">
+                每个消费项勾选“参与人”，该项金额将只在勾选的人之间均分。
+              </div>
+            
+              <div class="itemsList" data-role="itemsList" style="margin-top:10px; display:grid; gap:10px"></div>
+            
+              <div class="hint" data-role="itemsCheck" style="margin-top:10px"></div>
             </div>
-          
-            <div class="hint" style="margin-top:6px">
-              每个消费项勾选“参与人”，该项金额将只在勾选的人之间均分。
-            </div>
-          
-            <div class="itemsList" data-role="itemsList" style="margin-top:10px; display:grid; gap:10px"></div>
-          
-            <div class="hint" data-role="itemsCheck" style="margin-top:10px"></div>
-          </div>
-                
-          <table class="bill-table">
-            <thead>
-              <tr>
-                <th>参与人</th>
-                <th class="right">参与天数</th>
-                <th class="right">应付</th>
-              </tr>
-            </thead>
-            <tbody data-role="tb"></tbody>
-          </table>
+          </div> 
+          <div data-role="daysWrap">
+            <table class="bill-table">
+              <thead>
+                <tr>
+                  <th>参与人</th>
+                  <th class="right">参与天数</th>
+                  <th class="right">应付</th>
+                </tr>
+              </thead>
+              <tbody data-role="tb"></tbody>
+            </table>
+         </div>   
         </div>
       `;
 
@@ -3025,6 +3122,44 @@ function syncFilterUI(){
       }
       
       renderItems();
+      // ===== 分摊模式：days / items =====
+      
+      
+      const itemsWrap = card.querySelector('[data-role="itemsWrap"]');
+      const daysWrap  = card.querySelector('[data-role="daysWrap"]');
+      const btnDays   = card.querySelector('[data-act="modeDays"]');
+      const btnItems  = card.querySelector('[data-act="modeItems"]');
+      
+      function applyModeUI(){
+        const isItems = b.splitMode === "items";
+        itemsWrap.style.display = isItems ? "block" : "none";
+        daysWrap.style.display  = isItems ? "none"  : "block";
+        btnDays.classList.toggle("active", !isItems);
+        btnItems.classList.toggle("active", isItems);
+      }
+      
+      btnDays.addEventListener("click", ()=>{
+        b.splitMode = "days";
+        touchAndRender("已切换：按天数分摊");
+      });
+      
+      btnItems.addEventListener("click", ()=>{
+        b.splitMode = "items";
+        // 如果没 items，给个默认项（可选，但很建议）
+        b.items = Array.isArray(b.items) ? b.items : [];
+        if (b.items.length === 0){
+          b.items.push({
+            id: crypto.randomUUID?.() || String(Date.now()+Math.random()),
+            name: "消费项1",
+            cents: toCents(b.amount),
+            members: [] // 你也可以默认全选：state.people.map(p=>p.name)
+          });
+        }
+        touchAndRender("已切换：按Items分摊");
+      });
+      
+      // 初次渲染应用 UI
+      applyModeUI();
 
       const payerSel=card.querySelector('[data-role="payer"]');
       payerSel.value=b.payer || state.people[0] || "";
@@ -3490,6 +3625,7 @@ window.renderInvoicePager = renderInvoicePager;
 </script>
 </body>
 </html>
+
 
 
 
