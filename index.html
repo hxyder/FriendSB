@@ -338,18 +338,29 @@
   /* ===== Bill collapse + prettier table ===== */
 
 .bill-topline{
-  display:block;       
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+  flex-wrap:nowrap;            /* 关键：默认不换行 */
+}
+.bill-topline > div:first-child{
+  flex:1;
+  min-width:0;                 /* 关键：允许左侧内容收缩，不把按钮挤走 */
 }
 
-
-.bill-actions-bottom{
-  margin-top:10px;      
+.bill-actions{
+  flex:0 0 auto;
   display:flex;
   gap:8px;
-  flex-wrap:wrap;      
-  justify-content:flex-start;
   align-items:center;
+  justify-content:flex-end;
+  white-space:nowrap;          /* 关键：按钮不被拆成两行 */
 }
+@media (max-width: 560px){
+  .bill-topline{ flex-wrap:wrap; }
+  .bill-actions{ width:100%; justify-content:flex-end; }
+}    
   .bill-body{ margin-top:10px; display:none; }
   .bill-body.open{ display:block; }
 
@@ -2392,135 +2403,169 @@ function removeCurrentBillDraft(){
     bindTipEventsOnce();
   }
 
-  function createBill(){
-    recalcBillTotalFromTip();
-    const title=$("billTitle").value.trim();
-    const amount=Number($("billAmount").value);
-    const subtotal = readOptionalNumber(document.getElementById("billSubtotal"));
-    const tipPercent = getTipPercentFromUI();
-    const baseSubtotal = getBaseSubtotalForTip();
-    const start=$("billStart").value;
-    const end=$("billEnd").value;
-    const payer=$("billPayer").value;
-    const splitMode = document.getElementById("billSplitMode")?.value || "days";
-    const billDays=daysInclusive(start,end);
-    const selected=[...$("billParticipantsChecks").querySelectorAll("input[type=checkbox]:checked")].map(x=>x.value);
+function createBill(){
+  recalcBillTotalFromTip();
 
-    if(!title){ toast("请填账单名称"); return; }
-    if(!(amount>=0)){ toast("请填正确金额"); return; }
-    if(!start||!end||billDays<=0){ toast("日期范围不对"); return; }
-    if(!payer){ toast("请选择付款人"); return; }
-    if(selected.length===0){ toast("至少选择 1 个参与人"); return; }
+  const title = $("billTitle").value.trim();
+  const amount = Number($("billAmount").value);
 
-    const participantsSelected = selected;
-    
-    // ✅ 编辑模式：更新原账单（尽量保留每个人已设置的 days）
-    if(editingBillId){
-      const b = state.bills.find(x=>x.id===editingBillId);
-      if(!b){ toast("编辑失败：找不到账单"); return; }
-    
-      b.title = title;
-      b.amount = amount;
-      b.start = start;
-      b.end = end;
-      b.payer = payer;
-      b.subtotal = (subtotal != null) ? Math.max(0, subtotal) : null;
-      b.tipPercent = isFinite(tipPercent) ? tipPercent : 0;
-      b.baseSubtotal = isFinite(baseSubtotal) ? Math.max(0, baseSubtotal) : null;
-      // 记录旧模式（用于从 days->items / items->days 时做初始化）
-      const prevMode = b.splitMode || "days";
-      b.splitMode = splitMode;
-      
-      // 如果切到 items 且没有 items，就自动生成一个默认项
-      if (b.splitMode === "items") {
-        b.items = Array.isArray(b.items) ? b.items : [];
-        if (b.items.length === 0) {
-          b.items.push(splitMode: splitMode,
-          items: (splitMode === "items")
-            ? [{
-                id: uid(),              
-                name: "消费项1",
-                cents: toCents(amount), 
-                members: [...participantsSelected]
-              }]
-            : []);
-        } else {
-          // 可选：如果参与人变了，帮它“补齐/剔除”members（不强制）
-          b.items.forEach(it => {
-            it.members = Array.isArray(it.members) ? it.members : [];
-            it.members = it.members.filter(n => participantsSelected.includes(n));
-          });
-        }
+  const subtotal = readOptionalNumber(document.getElementById("billSubtotal"));
+  const tipPercent = getTipPercentFromUI();
+  const baseSubtotal = getBaseSubtotalForTip();
+
+  const start = $("billStart").value;
+  const end = $("billEnd").value;
+  const payer = $("billPayer").value;
+
+  // ✅ 默认 days（没有控件也没关系）
+  const splitMode = document.getElementById("billSplitMode")?.value || "days";
+
+  const billDays = daysInclusive(start, end);
+  const selected = [...$("billParticipantsChecks").querySelectorAll('input[type="checkbox"]:checked')].map(x => x.value);
+  const participantsSelected = selected;
+
+  if(!title){ toast("请填账单名称"); return; }
+  if(!(amount>=0)){ toast("请填正确金额"); return; }
+  if(!start || !end || billDays<=0){ toast("日期范围不对"); return; }
+  if(!payer){ toast("请选择付款人"); return; }
+  if(participantsSelected.length===0){ toast("至少选择 1 个参与人"); return; }
+
+  // ✅ 编辑模式：更新原账单（尽量保留 days）
+  if(editingBillId){
+    const b = state.bills.find(x => x.id === editingBillId);
+    if(!b){ toast("编辑失败：找不到账单"); return; }
+
+    const prevMode = b.splitMode || "days";
+
+    b.title = title;
+    b.amount = amount;
+    b.start = start;
+    b.end = end;
+    b.payer = payer;
+
+    b.subtotal = (subtotal != null) ? Math.max(0, subtotal) : null;
+    b.tipPercent = isFinite(tipPercent) ? tipPercent : 0;
+    b.baseSubtotal = isFinite(baseSubtotal) ? Math.max(0, baseSubtotal) : null;
+
+    // 模式
+    b.splitMode = splitMode || "days";
+
+    // participants：保留旧 days
+    const oldMap = new Map((b.participants || []).map(p => [p.name, p.days]));
+    b.participants = participantsSelected.map(name => ({
+      name,
+      days: Math.max(0, Math.floor(Number(oldMap.get(name) ?? billDays) || 0))
+    }));
+
+    // items：仅在 items 模式需要；若从 days->items 且没有 items，创建默认 item
+    if(b.splitMode === "items"){
+      b.items = Array.isArray(b.items) ? b.items : [];
+
+      if(b.items.length === 0 || prevMode !== "items"){
+        // 给一个默认项：金额=账单金额，members=当前参与人
+        b.items = [{
+          id: uid(),
+          name: "消费项1",
+          cents: toCents(amount),
+          members: [...participantsSelected]
+        }];
+      }else{
+        // 可选：参与人变了，members 自动剔除无效人
+        b.items.forEach(it => {
+          it.members = Array.isArray(it.members) ? it.members : [];
+          it.members = it.members.filter(n => participantsSelected.includes(n));
+        });
       }
-      
-      const oldMap = new Map((b.participants||[]).map(p=>[p.name, p.days]));
-      b.participants = participantsSelected.map(name=>({
-        name,
-        // 原来就存在：保留用户改过的 days；新加入：默认等于账单天数
-        days: Math.max(0, Math.floor(Number(oldMap.get(name) ?? billDays) || 0))
-      }));
-    
-      editingBillId = null;
-      $("billTitle").value=""; $("billAmount").value="";
-      touchAndRender("已保存修改");
-      closeModal("bill");
-      return;
-    }
-if (!b.items) {
-  b.items = [
-    { id: crypto.randomUUID?.() || String(Date.now()), name: "消费项1", cents: amountC, members: [] }
-  ];
-}
-    
-    // ✅ 创建模式：新建账单
-    const participants = participantsSelected.map(name=>({name, days: billDays}));
-    state.bills.unshift({
-      id: uid(), title, amount, start, end, payer, participants,
-      subtotal: (subtotal != null) ? Math.max(0, subtotal) : null,
-      tipPercent: isFinite(tipPercent) ? tipPercent : 0,
-      baseSubtotal: isFinite(baseSubtotal) ? Math.max(0, baseSubtotal) : null
-    });
-    touchAndRender();        // 或 touchAndRender("已创建账单");
-    setActiveTab("bills");
-    // ✅ 如果当前是在“发票草稿队列模式”，创建后自动进入下一张
-    if(editingFromBillDraft && billDrafts.length>0){
-      // 先把表单回写到草稿（确保你改的内容被用到）
-      captureBillFormToDraft(billDrafts[billDraftIndex]);
-    
-      // 标记发票 added（沿用你原来的逻辑）
-      const invId = billDrafts[billDraftIndex].fromInvoiceId;
-      if(invId){
-        const inv = invoiceDrafts.find(x=>x.id===invId);
-        if(inv){ inv.added = true; inv.applied = false; }
-      }
-    
-      // 移除已创建的草稿
-      billDrafts.splice(billDraftIndex, 1);
-    
-      if(billDrafts.length===0){
-        editingFromBillDraft = false;
-        closeModal("bill");
-        toast("已创建账单（草稿队列已完成）");
-        return;
-      }
-    
-      // 留在当前 index（因为当前被删了，下一张会顶上来）
-      billDraftIndex = Math.min(billDraftIndex, billDrafts.length-1);
-      openBillDraftAt(billDraftIndex);
-      toast("已创建账单（已切到下一张草稿）");
-      return;
+    }else{
+      // days 模式下也允许保留 items（以后切回还能用），不强制清空
+      b.items = Array.isArray(b.items) ? b.items : [];
     }
 
-    
-    $("billTitle").value=""; $("billAmount").value="";
-    touchAndRender("已创建账单");
-    renderAll();
-    setActiveTab("bills");
-    // ✅ 新增：如果这单来自发票队列，标记为已加入，并自动切下一张
-    afterBillCreatedFromInvoice();
-    
+    editingBillId = null;
+
+    // 清空表单
+    $("billTitle").value = "";
+    $("billAmount").value = "";
+
+    touchAndRender("已保存修改");
     closeModal("bill");
+    return;
   }
+
+  // ✅ 创建模式：新建账单
+  const participants = participantsSelected.map(name => ({ name, days: billDays }));
+
+  const newBill = {
+    id: uid(),
+    title, amount, start, end, payer,
+    participants,
+    splitMode: splitMode || "days",
+    subtotal: (subtotal != null) ? Math.max(0, subtotal) : null,
+    tipPercent: isFinite(tipPercent) ? tipPercent : 0,
+    baseSubtotal: isFinite(baseSubtotal) ? Math.max(0, baseSubtotal) : null,
+    // items：只在 items 模式初始化一个默认项
+    items: (splitMode === "items")
+      ? [{
+          id: uid(),
+          name: "消费项1",
+          cents: toCents(amount),
+          members: [...participantsSelected]
+        }]
+      : []
+  };
+
+  state.bills.unshift(newBill);
+
+  // ✅ 草稿队列（如果你有这套逻辑，就保留；没有也不会影响）
+  if(editingFromBillDraft && billDrafts && billDrafts.length > 0){
+    // 回写表单到草稿（你已有函数的话）
+    if(typeof captureBillFormToDraft === "function"){
+      captureBillFormToDraft(billDrafts[billDraftIndex]);
+    }
+
+    // 标记发票已加入（你已有数据结构的话）
+    const invId = billDrafts[billDraftIndex]?.fromInvoiceId;
+    if(invId){
+      const inv = (window.invoiceDrafts || []).find(x => x.id === invId);
+      if(inv){ inv.added = true; inv.applied = false; }
+    }
+
+    // 移除已创建的草稿
+    billDrafts.splice(billDraftIndex, 1);
+
+    touchAndRender("已创建账单");
+
+    if(billDrafts.length === 0){
+      editingFromBillDraft = false;
+      closeModal("bill");
+      toast("已创建账单（草稿队列已完成）");
+      return;
+    }
+
+    // 切到下一张草稿
+    billDraftIndex = Math.min(billDraftIndex, billDrafts.length - 1);
+    if(typeof openBillDraftAt === "function"){
+      openBillDraftAt(billDraftIndex);
+    }
+    toast("已创建账单（已切到下一张草稿）");
+    return;
+  }
+
+  // 普通创建
+  $("billTitle").value = "";
+  $("billAmount").value = "";
+
+  touchAndRender("已创建账单");
+  setActiveTab("bills");
+
+  // 如果你有这句函数，就继续调用
+  if(typeof afterBillCreatedFromInvoice === "function"){
+    afterBillCreatedFromInvoice();
+  }
+
+  closeModal("bill");
+}
+
   
   function openEditBill(billId){
     const b = state.bills.find(x=>x.id===billId);
@@ -2591,58 +2636,76 @@ if (!b.items) {
   }
 
   // ========= 分摊/结算 =========
-  function computeAllocCents(bill){
+function computeAllocCents(bill){
   const amountC = toCents(bill.amount);
   const billDays = daysInclusive(bill.start, bill.end);
 
-  // ===== items 模式 =====
-  if ((bill.splitMode || "items") === "items"){
-    const people = state.people.map(p => (typeof p === "string" ? p : p.name));
-    const owed = new Map(people.map(n => [n, 0]));
+  // 统一：默认 days 模式
+  const mode = (bill.splitMode || "days");
+
+  // ===== items 模式：每个 item 在 members 内均分 =====
+  if(mode === "items"){
+    const allocMap = new Map(); // name -> cents
 
     const items = Array.isArray(bill.items) ? bill.items : [];
-    for (const it of items){
-      const cents = Number(it.cents)||0;
+    for(const it of items){
+      const cents = Math.max(0, Number(it.cents)||0);
       const members = Array.isArray(it.members) ? it.members : [];
+      if(cents<=0 || members.length===0) continue;
 
-      const names = members.length ? members : []; // 没选就不给任何人分（也可以按全员分，看你规则）
-      if (names.length === 0) continue;
+      const base = Math.floor(cents / members.length);
+      let rem = cents - base * members.length;
 
-      const each = Math.floor(cents / names.length);
-      let rem = cents - each * names.length;
-
-      for (const n of names){
-        owed.set(n, (owed.get(n)||0) + each + (rem>0 ? 1 : 0));
-        if (rem>0) rem--;
-      }
+      // 均分 + 余数按顺序补 1 cent
+      members.forEach((name, idx)=>{
+        const add = base + (idx < rem ? 1 : 0);
+        allocMap.set(name, (allocMap.get(name)||0) + add);
+      });
     }
 
-    const alloc = Array.from(owed.entries()).map(([name, shareC])=>({name, shareC}));
-    const totalPersonDays = 0; // items 模式不需要
+    const alloc = Array.from(allocMap.entries())
+      .map(([name, shareC])=>({ name, shareC }))
+      .sort((a,b)=> b.shareC - a.shareC);
+
+    const totalPersonDays = 0; // items 模式下不使用
     return { amountC, totalPersonDays, alloc };
-  }    
-    const amountC=toCents(bill.amount);
-    const ps=bill.participants||[];
-    const totalPersonDays = ps.reduce((s,p)=>s+(Number(p.days)||0),0);
-    if(amountC<=0 || totalPersonDays<=0 || ps.length===0){
-      return { amountC, totalPersonDays, alloc: ps.map(p=>({name:p.name, days:Number(p.days)||0, shareC:0})) };
-    }
-    const items = ps.map((p,idx)=>{
-      const d=Math.max(0, Math.floor(Number(p.days)||0));
-      const exact = amountC * (d/totalPersonDays);
-      const floorC=Math.floor(exact);
-      const rem=exact-floorC;
-      return { idx, name:p.name, days:d, floorC, rem };
-    });
-    let sumFloor=items.reduce((s,x)=>s+x.floorC,0);
-    let remaining=amountC-sumFloor;
-    items.sort((a,b)=>b.rem-a.rem);
-    for(let i=0;i<items.length && remaining>0;i++){
-      items[i].floorC += 1; remaining -= 1;
-    }
-    items.sort((a,b)=>a.idx-b.idx);
-    return { amountC, totalPersonDays, alloc: items.map(x=>({name:x.name, days:x.days, shareC:x.floorC})) };
   }
+
+  // ===== days 模式：按 days 权重 =====
+  let alloc = [];
+  const parts = Array.isArray(bill.participants) ? bill.participants : [];
+  const totalPersonDays = parts.reduce((s,p)=> s + Math.max(0, Number(p.days)||0), 0);
+
+  if(totalPersonDays <= 0){
+    // 兜底：所有参与人均分
+    const names = parts.map(p=>p.name).filter(Boolean);
+    const n = names.length || 1;
+    const base = Math.floor(amountC / n);
+    let rem = amountC - base*n;
+    alloc = names.map((name, idx)=>({
+      name,
+      shareC: base + (idx < rem ? 1 : 0),
+    }));
+    return { amountC, totalPersonDays: billDays * n, alloc };
+  }
+
+  // 按比例分摊（最后一个吃掉误差确保总和=amountC）
+  let used = 0;
+  for(let i=0;i<parts.length;i++){
+    const p = parts[i];
+    const w = Math.max(0, Number(p.days)||0);
+    let shareC;
+    if(i === parts.length - 1){
+      shareC = amountC - used;
+    }else{
+      shareC = Math.round(amountC * (w / totalPersonDays));
+      used += shareC;
+    }
+    alloc.push({ name: p.name, shareC });
+  }
+  return { amountC, totalPersonDays, alloc };
+}
+
 
   function computeTotals(){
     const owed=new Map(), paid=new Map();
@@ -2833,395 +2896,429 @@ function syncFilterUI(){
       renderAll();
     });
   }  
-  function renderBills(){
-    const box=$("billsContainer");
-    box.innerHTML="";
-    const bills = getFilteredBills();
-    if(bills.length===0){
 
-      if(state.bills.length===0){
-        box.innerHTML=`<div class="hint">还没有账单，点底部“+账”添加。</div>`;
-      }else{
-        box.innerHTML=`<div class="hint">没有符合筛选条件的账单。</div>`;
-      }
-      return;
+
+function renderBills(){
+  const box = $("billsContainer");
+  box.innerHTML = "";
+
+  const bills = getFilteredBills();
+
+  if(bills.length === 0){
+    if(state.bills.length === 0){
+      box.innerHTML = `<div class="hint">还没有账单，点底部“+账”添加。</div>`;
+    }else{
+      box.innerHTML = `<div class="hint">没有符合筛选条件的账单。</div>`;
     }
-      // ✅ 列表折叠视图：只显示 付款人/金额/人数/天数（点击可展开到卡片视图并定位）
-    if(billsCompact){
-      const table = document.createElement("table");
-      table.className = "bill-table";
-      table.innerHTML = `
-        <thead>
-          <tr>
-            <th>付款人</th>
-            <th class="right">金额</th>
-            <th class="right">人数</th>
-            <th class="right">天数</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      `;
-      const tb = table.querySelector("tbody");
-  
-      bills.forEach(b=>{
-        b.splitMode = b.splitMode || "items"; // 兜底
-        const billDays = daysInclusive(b.start, b.end);
-        const amountC = toCents(b.amount);
-        const peopleCount = (b.participants||[]).length;
-  
-        const tr = document.createElement("tr");
-        tr.style.cursor = "pointer";
-        tr.innerHTML = `
-          <td>
-            <div style="font-weight:900">${escapeHtml(b.payer || "")}</div>
-            <div class="small muted">${escapeHtml(b.title||"未命名账单")}</div>
-          </td>
-          <td class="right mono">$${centsToMoney(amountC)}</td>
-          <td class="right mono">${peopleCount}</td>
-          <td class="right mono">${billDays}</td>
-        `;
-  
-        // 点击行：切回卡片视图，并让该账单默认展开 + 滚动定位
-        tr.addEventListener("click", ()=>{
-          billsCompact = false;
-          persistBillsCompact();
-          renderAll();
-          setTimeout(()=>{
-            document.getElementById(`bill-${b.id}`)?.scrollIntoView({behavior:"smooth", block:"start"});
-          }, 0);
-        });
-  
-        tb.appendChild(tr);
-      });
-  
-      box.appendChild(table);
-      return;
-    }
+    return;
+  }
+
+  // ✅ 折叠列表视图
+  if(billsCompact){
+    const table = document.createElement("table");
+    table.className = "bill-table";
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>付款人</th>
+          <th class="right">金额</th>
+          <th class="right">人数</th>
+          <th class="right">天数</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+
+    const tb = table.querySelector("tbody");
+
     bills.forEach(b=>{
-      const billDays=daysInclusive(b.start,b.end);
-      const { amountC, totalPersonDays, alloc } = computeAllocCents(b);
+      b.splitMode = b.splitMode || "days"; // ✅ 默认 days
 
-    const card=document.createElement("div");
-    card.className="card billCard";
-    card.style.marginBottom="12px";
+      const billDays = daysInclusive(b.start, b.end);
+      const amountC = toCents(b.amount);
+      const peopleCount = (b.participants || []).length;
+
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.innerHTML = `
+        <td>
+          <div style="font-weight:900">${escapeHtml(b.payer || "")}</div>
+          <div class="small muted">${escapeHtml(b.title || "未命名账单")}</div>
+        </td>
+        <td class="right mono">$${centsToMoney(amountC)}</td>
+        <td class="right mono">${peopleCount}</td>
+        <td class="right mono">${billDays}</td>
+      `;
+
+      tr.addEventListener("click", ()=>{
+        billsCompact = false;
+        persistBillsCompact();
+        renderAll();
+        setTimeout(()=>{
+          document.getElementById(`bill-${b.id}`)?.scrollIntoView({behavior:"smooth", block:"start"});
+        }, 0);
+      });
+
+      tb.appendChild(tr);
+    });
+
+    box.appendChild(table);
+    return;
+  }
+
+  // ✅ 卡片视图
+  bills.forEach(b=>{
+    b.splitMode = b.splitMode || "days";
+    b.items = Array.isArray(b.items) ? b.items : [];
+
+    const billDays = daysInclusive(b.start, b.end);
+    const { amountC, totalPersonDays, alloc } = computeAllocCents(b);
+
+    const card = document.createElement("div");
+    card.className = "card billCard";
+    card.style.marginBottom = "12px";
     card.id = `bill-${b.id}`;
-    
-    // ✅ 按付款人上色（没有付款人就用标题）
+
     const [a1,a2] = accentForName(b.payer || b.title || "bill");
     card.style.setProperty("--accent1", a1);
     card.style.setProperty("--accent2", a2);
 
-    const payerOptions = state.people.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
-    const isOpen = expandedBills.has(b.id); // ✅ 默认不自动展开
+    const payerOptions = state.people
+      .map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
+      .join("");
 
+    const isOpen = expandedBills.has(b.id);
 
-      card.innerHTML = `
-        <div class="bill-topline">
-          <div>
-            <div class="billCardHeaderGlow">
-              <div style="font-weight:950">${escapeHtml(b.title||"未命名账单")}</div>
-              <div class="small muted" style="margin-top:4px">
-                金额：<span class="mono">$${centsToMoney(amountC)}</span> ·
-                日期：<span class="mono">${escapeHtml(b.start)}</span> ~ <span class="mono">${escapeHtml(b.end)}</span>（${billDays}天） ·
-                总人天：<span class="mono">${totalPersonDays}</span>
-              </div>
-        
-              <div class="row" style="margin-top:8px; justify-content:space-between; align-items:center">
-                <div class="row" style="gap:10px">
-                  <span class="badge">付款人</span>
-                  <select data-role="payer" style="min-width:160px">${payerOptions}</select>
-                  <button class="secondary ghost" data-act="setAll">一键全程</button>
-                </div>
-              
-                <div class="row" style="gap:10px">
-                  <span class="badge">分摊方式</span>
-                  <div class="seg" data-role="modeSeg">
-                    <button class="segBtn" data-act="modeDays">按天数</button>
-                    <button class="segBtn" data-act="modeItems">按Items</button>
-                  </div>
-                </div>
-              </div>
-
+    card.innerHTML = `
+      <div class="bill-topline">
+        <div>
+          <div class="billCardHeaderGlow">
+            <div style="font-weight:950">${escapeHtml(b.title || "未命名账单")}</div>
+            <div class="small muted" style="margin-top:4px">
+              金额：<span class="mono">$${centsToMoney(amountC)}</span> ·
+              日期：<span class="mono">${escapeHtml(b.start)}</span> ~ <span class="mono">${escapeHtml(b.end)}</span>（${billDays}天） ·
+              总人天：<span class="mono">${totalPersonDays}</span>
             </div>
-          </div>
-      </div>
-          <div class="bill-actions">
-            <button class="secondary ghost bill-toggle" data-act="toggle">${isOpen ? "收起" : "展开"}</button>
-            <button class="secondary ghost" data-act="edit">编辑</button>
-            <button class="secondary ghost" data-act="dup">复制</button>
-            <button class="danger" data-act="del">删除</button>
-          </div>
-        
-      
-        <div class="bill-body ${isOpen ? "open" : ""}" data-role="body">
-          <div class="hr"></div>
-          
-          <div class="hr"></div>
-          <div data-role="itemsWrap">
-            <div class="bill-items card" style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(255,255,255,.75)">
-              <div class="row" style="justify-content:space-between; align-items:center">
-                <h2 style="margin:0">消费项 Items（按项分摊）</h2>
-                <button class="secondary ghost" data-act="addItem">+ 添加项</button>
+
+            <div class="row" style="margin-top:8px; align-items:center; justify-content:space-between; gap:10px">
+              <div class="row" style="gap:10px; align-items:center">
+                <span class="badge">付款人</span>
+                <select data-role="payer" style="min-width:160px">${payerOptions}</select>
               </div>
-            
-              <div class="hint" style="margin-top:6px">
-                每个消费项勾选“参与人”，该项金额将只在勾选的人之间均分。
+
+              <div class="row" style="gap:10px; align-items:center">
+                <span class="badge">分摊方式</span>
+                <div class="seg" data-role="modeSeg">
+                  <button class="segBtn" data-act="modeDays" type="button">按天数</button>
+                  <button class="segBtn" data-act="modeItems" type="button">按 Items</button>
+                </div>
+                <button class="secondary ghost" data-act="setAll" type="button">一键全程</button>
               </div>
-            
-              <div class="itemsList" data-role="itemsList" style="margin-top:10px; display:grid; gap:10px"></div>
-            
-              <div class="hint" data-role="itemsCheck" style="margin-top:10px"></div>
             </div>
-          </div> 
-          <div data-role="daysWrap">
-            <table class="bill-table">
-              <thead>
-                <tr>
-                  <th>参与人</th>
-                  <th class="right">参与天数</th>
-                  <th class="right">应付</th>
-                </tr>
-              </thead>
-              <tbody data-role="tb"></tbody>
-            </table>
-         </div>   
+
+          </div>
         </div>
-      `;
 
+        <div class="bill-actions">
+          <button class="secondary ghost bill-toggle" data-act="toggle" type="button">${isOpen ? "收起" : "展开"}</button>
+          <button class="secondary ghost" data-act="edit" type="button">编辑</button>
+          <button class="secondary ghost" data-act="dup" type="button">复制</button>
+          <button class="danger" data-act="del" type="button">删除</button>
+        </div>
+      </div>
 
-    // ✅ 统一用事件委托：处理 addItem / delItem
-    card.addEventListener("click", (e) => {
-      const btn = e.target.closest("button[data-act]");
-      if (!btn) return;
-    
-      const act = btn.dataset.act;
-    
-      if (act === "addItem") {
+      <div class="bill-body ${isOpen ? "open" : ""}" data-role="body">
+        <div class="hr"></div>
+
+        <!-- Items 模式区域 -->
+        <div data-role="itemsWrap" class="bill-items card"
+             style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(255,255,255,.75)">
+          <div class="row" style="justify-content:space-between; align-items:center">
+            <h2 style="margin:0">消费项 Items（按项分摊）</h2>
+            <button class="secondary ghost" data-act="addItem" type="button">+ 添加项</button>
+          </div>
+
+          <div class="hint" style="margin-top:6px">
+            每个消费项勾选“参与人”，该项金额将只在勾选的人之间均分。
+          </div>
+
+          <div class="itemsList" data-role="itemsList" style="margin-top:10px; display:grid; gap:10px"></div>
+          <div class="hint" data-role="itemsCheck" style="margin-top:10px"></div>
+        </div>
+
+        <div class="hr"></div>
+
+        <!-- Days 模式区域 -->
+        <div data-role="daysWrap">
+          <table class="bill-table">
+            <thead>
+              <tr>
+                <th>参与人</th>
+                <th class="right">参与天数</th>
+                <th class="right">应付</th>
+              </tr>
+            </thead>
+            <tbody data-role="tb"></tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    // ====== 基础控件 ======
+    const payerSel = card.querySelector('[data-role="payer"]');
+    payerSel.value = b.payer || state.people[0] || "";
+    payerSel.addEventListener("change", ()=>{
+      b.payer = payerSel.value;
+      touchAndRender();
+    });
+
+    // ====== 展开/收起 ======
+    const bodyBox = card.querySelector('[data-role="body"]');
+    const toggleBtn = card.querySelector('[data-act="toggle"]');
+    toggleBtn.addEventListener("click", ()=>{
+      const willOpen = !bodyBox.classList.contains("open");
+      bodyBox.classList.toggle("open", willOpen);
+      toggleBtn.textContent = willOpen ? "收起" : "展开";
+
+      if(willOpen) expandedBills.add(b.id);
+      else expandedBills.delete(b.id);
+
+      persistExpanded();
+    });
+
+    // ====== 删除 / 复制 / 编辑 / 一键全程 ======
+    card.querySelector('[data-act="del"]').addEventListener("click", ()=>{
+      state.bills = state.bills.filter(x => x.id !== b.id);
+      touchAndRender("已删除账单");
+    });
+
+    card.querySelector('[data-act="dup"]').addEventListener("click", ()=>{
+      const copy = JSON.parse(JSON.stringify(b));
+      copy.id = uid();
+      copy.title = (copy.title || "账单") + "（复制）";
+      state.bills.unshift(copy);
+      touchAndRender("已复制");
+    });
+
+    card.querySelector('[data-act="edit"]').addEventListener("click", ()=>{
+      openEditBill(b.id);
+    });
+
+    card.querySelector('[data-act="setAll"]').addEventListener("click", ()=>{
+      (b.participants || []).forEach(pp => pp.days = billDays);
+      touchAndRender("已设置全程");
+    });
+
+    // ====== Items 渲染 ======
+    const itemsListEl = card.querySelector('[data-role="itemsList"]');
+    const itemsCheckEl = card.querySelector('[data-role="itemsCheck"]');
+
+    function renderItems(){
+      b.items = Array.isArray(b.items) ? b.items : [];
+
+      // 如果在 items 模式且 items 空，给个默认项（避免空白）
+      if(b.splitMode === "items" && b.items.length === 0){
+        b.items.push({
+          id: uid(),
+          name: "消费项1",
+          cents: toCents(b.amount),
+          members: (b.participants || []).map(x=>x.name)
+        });
+      }
+
+      itemsListEl.innerHTML = b.items.map(it=>{
+        const checkedSet = new Set(it.members || []);
+        const peopleChecks = state.people.map(name=>{
+          const isChecked = checkedSet.has(name) ? "checked" : "";
+          return `
+            <label class="checkItem" style="padding:8px 10px">
+              <input type="checkbox" data-it="${it.id}" data-pid="${escapeHtml(name)}" ${isChecked}/>
+              <span>${escapeHtml(name)}</span>
+            </label>
+          `;
+        }).join("");
+
+        return `
+          <div class="card" style="box-shadow:none; border:1px solid rgba(18,22,42,.10); border-radius:14px; background:rgba(255,255,255,.92)">
+            <div class="row" style="justify-content:space-between; align-items:flex-start; gap:10px">
+              <div style="flex:1; min-width:220px">
+                <label>名称</label>
+                <input data-role="itName" data-it="${it.id}" value="${escapeHtml(it.name||"")}" />
+              </div>
+
+              <div style="width:160px">
+                <label>金额（$）</label>
+                <input data-role="itMoney" data-it="${it.id}" type="number" step="0.01"
+                  value="${(Number(it.cents||0)/100).toFixed(2)}" />
+              </div>
+
+              <div style="display:flex; gap:8px; margin-top:22px">
+                <button class="secondary ghost" data-act="delItem" data-it="${it.id}" type="button">删除</button>
+              </div>
+            </div>
+
+            <div style="margin-top:10px">
+              <label>参与人（勾选后该项均分）</label>
+              <div class="checkList" style="margin-top:8px">
+                ${peopleChecks}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      const itemsSum = b.items.reduce((s, it)=> s + (Number(it.cents)||0), 0);
+      const diff = itemsSum - amountC;
+
+      if(diff === 0){
+        itemsCheckEl.innerHTML = `✅ Items 总额与账单金额一致：<span class="mono">$${centsToMoney(itemsSum)}</span>`;
+      }else{
+        itemsCheckEl.innerHTML =
+          `❌ Items 总额：<span class="mono">$${centsToMoney(itemsSum)}</span>，账单金额：<span class="mono">$${centsToMoney(amountC)}</span>，
+          差额：<span class="mono">${diff>0?"+":""}$${centsToMoney(diff)}</span>（请调整各项金额）`;
+      }
+    }
+
+    // 初次渲染 items（不管模式都渲染一次，避免切换时空白）
+    renderItems();
+
+    // ====== mode 显示/隐藏 ======
+    const itemsWrap = card.querySelector('[data-role="itemsWrap"]');
+    const daysWrap  = card.querySelector('[data-role="daysWrap"]');
+    const btnDays   = card.querySelector('[data-act="modeDays"]');
+    const btnItems  = card.querySelector('[data-act="modeItems"]');
+
+    function applyModeUI(){
+      const isItems = (b.splitMode === "items");
+      itemsWrap.style.display = isItems ? "" : "none";
+      daysWrap.style.display  = isItems ? "none" : "";
+      btnDays.classList.toggle("active", !isItems);
+      btnItems.classList.toggle("active", isItems);
+    }
+    applyModeUI();
+
+    btnDays.addEventListener("click", (e)=>{
+      e.preventDefault(); e.stopPropagation();
+      b.splitMode = "days";
+      touchAndRender("已切换：按天数");
+    });
+
+    btnItems.addEventListener("click", (e)=>{
+      e.preventDefault(); e.stopPropagation();
+      b.splitMode = "items";
+      // 确保有默认 item
+      b.items = Array.isArray(b.items) ? b.items : [];
+      if(b.items.length === 0){
+        b.items.push({
+          id: uid(),
+          name: "消费项1",
+          cents: toCents(b.amount),
+          members: (b.participants || []).map(x=>x.name)
+        });
+      }
+      touchAndRender("已切换：按 Items");
+    });
+
+    // ====== addItem / delItem（用 click 委托） ======
+    card.addEventListener("click", (e)=>{
+      const target = e.target;
+      if(!(target instanceof Element)) return;
+
+      const act = target.getAttribute("data-act");
+      if(!act) return;
+
+      if(act === "addItem"){
+        e.preventDefault(); e.stopPropagation();
         b.items = Array.isArray(b.items) ? b.items : [];
         b.items.push({
-          id: crypto.randomUUID?.() || String(Date.now() + Math.random()),
+          id: uid(),
           name: `消费项${b.items.length + 1}`,
           cents: 0,
           members: []
         });
-        touchAndRender("已添加消费项");
+        touchAndRender();
         return;
       }
-    
-      if (act === "delItem") {
-        const itId = btn.getAttribute("data-it");
+
+      if(act === "delItem"){
+        e.preventDefault(); e.stopPropagation();
+        const itId = target.getAttribute("data-it");
         b.items = (b.items || []).filter(x => x.id !== itId);
-        touchAndRender("已删除消费项");
+        touchAndRender();
         return;
       }
     });
 
-      
-    card.addEventListener("change", (e) => {
+    // ====== item 输入/checkbox（用 change 事件） ======
+    card.addEventListener("change", (e)=>{
       const t = e.target;
-    
-      if (t.matches('input[data-role="itName"]')) {
+      if(!(t instanceof Element)) return;
+
+      if(t.matches('input[data-role="itName"]')){
         const itId = t.getAttribute("data-it");
         const it = (b.items||[]).find(x => x.id === itId);
-        if (it) it.name = t.value;
+        if(it) it.name = t.value;
         touchAndRender();
         return;
       }
-    
-      if (t.matches('input[data-role="itMoney"]')) {
+
+      if(t.matches('input[data-role="itMoney"]')){
         const itId = t.getAttribute("data-it");
         const it = (b.items||[]).find(x => x.id === itId);
-        if (it) it.cents = Math.round(Number(t.value||0) * 100);
+        if(it) it.cents = Math.round(Number(t.value||0) * 100);
         touchAndRender();
         return;
       }
-    
-      // ✅ checkbox member（pid 是人名字符串）
-      if (t.matches('input[type="checkbox"][data-it][data-pid]')) {
+
+      if(t.matches('input[type="checkbox"][data-it][data-pid]')){
         const itId = t.getAttribute("data-it");
-        const pid = t.getAttribute("data-pid"); // 这里就是人名
+        const pid = t.getAttribute("data-pid"); // 人名字符串
         const it = (b.items||[]).find(x => x.id === itId);
-        if (!it) return;
-    
+        if(!it) return;
+
         it.members = Array.isArray(it.members) ? it.members : [];
         const set = new Set(it.members);
-    
-        if (t.checked) set.add(pid);
+        if(t.checked) set.add(pid);
         else set.delete(pid);
-    
         it.members = Array.from(set);
+
         touchAndRender();
         return;
       }
     });
 
+    // ====== days 表格渲染（应付来自 alloc） ======
+    const tb = card.querySelector('[data-role="tb"]');
+    tb.innerHTML = "";
 
+    (b.participants || []).forEach(pp=>{
+      const shareC = alloc.find(a => a.name === pp.name)?.shareC ?? 0;
 
-      
-      const itemsListEl = card.querySelector('[data-role="itemsList"]');
-      const itemsCheckEl = card.querySelector('[data-role="itemsCheck"]');
-      
-      function renderItems(){
-        // 兜底
-        b.items = Array.isArray(b.items) ? b.items : [];
-        if (b.items.length === 0){
-          b.items.push({ id: crypto.randomUUID?.() || String(Date.now()), name:"消费项1", cents: amountC, members: [] });
-        }
-      
-        itemsListEl.innerHTML = b.items.map((it, idx) => {
-          const checked = new Set(it.members || []);
-          const peopleChecks = state.people.map(p => {
-            const isChecked = checked.has(p) ? "checked" : "";
-            return `
-              <label class="checkItem" style="padding:8px 10px">
-                <input type="checkbox" data-it="${it.id}" data-pid="${escapeHtml(p)}" ${isChecked}/>
-                <span>${escapeHtml(p)}</span>
-              </label>
-            `;
-          }).join("");
-      
-          return `
-            <div class="card" style="box-shadow:none; border:1px solid rgba(18,22,42,.10); border-radius:14px; background:rgba(255,255,255,.92)">
-              <div class="row" style="justify-content:space-between; align-items:flex-start; gap:10px">
-                <div style="flex:1; min-width:220px">
-                  <label>名称</label>
-                  <input data-role="itName" data-it="${it.id}" value="${escapeHtml(it.name||"")}" />
-                </div>
-      
-                <div style="width:160px">
-                  <label>金额（$）</label>
-                  <input data-role="itMoney" data-it="${it.id}" type="number" step="0.01"
-                    value="${(Number(it.cents||0)/100).toFixed(2)}" />
-                </div>
-      
-                <div style="display:flex; gap:8px; margin-top:22px">
-                  <button class="secondary ghost" data-act="delItem" data-it="${it.id}">删除</button>
-                </div>
-              </div>
-      
-              <div style="margin-top:10px">
-                <label>参与人（勾选后该项均分）</label>
-                <div class="checkList" style="margin-top:8px">
-                  ${peopleChecks}
-                </div>
-              </div>
-            </div>
-          `;
-        }).join("");
-      
-        // 校验 items 总额 vs 账单总额
-        const itemsSum = b.items.reduce((s, it) => s + (Number(it.cents)||0), 0);
-        const diff = itemsSum - amountC;
-        if (diff === 0){
-          itemsCheckEl.innerHTML = `✅ Items 总额与账单金额一致：<span class="mono">$${centsToMoney(itemsSum)}</span>`;
-        }else{
-          itemsCheckEl.innerHTML =
-            `❌ Items 总额：<span class="mono">$${centsToMoney(itemsSum)}</span>，账单金额：<span class="mono">$${centsToMoney(amountC)}</span>，
-            差额：<span class="mono">${diff>0?"+":""}$${centsToMoney(diff)}</span>（请调整各项金额）`;
-        }
-      }
-      
-      renderItems();
-      // ===== 分摊模式：days / items =====
-      
-      
-      const itemsWrap = card.querySelector('[data-role="itemsWrap"]');
-      const daysWrap  = card.querySelector('[data-role="daysWrap"]');
-      const btnDays   = card.querySelector('[data-act="modeDays"]');
-      const btnItems  = card.querySelector('[data-act="modeItems"]');
-      
-      function applyModeUI(){
-        const isItems = b.splitMode === "items";
-        itemsWrap.style.display = isItems ? "block" : "none";
-        daysWrap.style.display  = isItems ? "none"  : "block";
-        btnDays.classList.toggle("active", !isItems);
-        btnItems.classList.toggle("active", isItems);
-      }
-      
-      btnDays.addEventListener("click", ()=>{
-        b.splitMode = "days";
-        touchAndRender("已切换：按天数分摊");
-      });
-      
-      btnItems.addEventListener("click", ()=>{
-        b.splitMode = "items";
-        // 如果没 items，给个默认项（可选，但很建议）
-        b.items = Array.isArray(b.items) ? b.items : [];
-        if (b.items.length === 0){
-          b.items.push({
-            id: crypto.randomUUID?.() || String(Date.now()+Math.random()),
-            name: "消费项1",
-            cents: toCents(b.amount),
-            members: [] // 你也可以默认全选：state.people.map(p=>p.name)
-          });
-        }
-        touchAndRender("已切换：按Items分摊");
-      });
-      
-      // 初次渲染应用 UI
-      applyModeUI();
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="font-weight:900">${escapeHtml(pp.name)}</td>
+        <td class="right">
+          <input type="number" min="0" step="1"
+            value="${Math.max(0, Math.floor(Number(pp.days)||0))}"
+            class="bill-days-input" />
+          <div class="bill-suggest">建议：${billDays}</div>
+        </td>
+        <td class="right mono">$${centsToMoney(shareC)}</td>
+      `;
 
-      const payerSel=card.querySelector('[data-role="payer"]');
-      payerSel.value=b.payer || state.people[0] || "";
-      payerSel.addEventListener("change", ()=>{ b.payer=payerSel.value; touchAndRender(); });
-
-      card.querySelector('[data-act="del"]').addEventListener("click", ()=>{
-        state.bills = state.bills.filter(x=>x.id!==b.id);
-        touchAndRender("已删除账单");
-      });
-      card.querySelector('[data-act="dup"]').addEventListener("click", ()=>{
-        const copy=JSON.parse(JSON.stringify(b));
-        copy.id=uid(); copy.title=(copy.title||"账单")+"（复制）";
-        state.bills.unshift(copy);
-        touchAndRender("已复制");
-      });
-      card.querySelector('[data-act="setAll"]').addEventListener("click", ()=>{
-        (b.participants||[]).forEach(pp=>pp.days=billDays);
-        touchAndRender("已设置全程");
-      });
-      card.querySelector('[data-act="edit"]').addEventListener("click", ()=>{
-        openEditBill(b.id);
+      const inp = tr.querySelector("input");
+      inp.addEventListener("input", ()=>{
+        pp.days = Math.max(0, Math.floor(Number(inp.value)||0));
+        touchAndRender();
       });
 
-      // ✅ 折叠/展开（新增）
-      const bodyBox = card.querySelector('[data-role="body"]');
-      const toggleBtn = card.querySelector('[data-act="toggle"]');
-      
-      toggleBtn.addEventListener("click", ()=>{
-        const willOpen = !bodyBox.classList.contains("open");
-        bodyBox.classList.toggle("open", willOpen);
-        toggleBtn.textContent = willOpen ? "收起" : "展开";
-      
-        if(willOpen) expandedBills.add(b.id);
-        else expandedBills.delete(b.id);
-        persistExpanded();
-      });
-
-      const tb=card.querySelector('[data-role="tb"]');
-      (b.participants||[]).forEach(pp=>{
-        const shareC = alloc.find(a=>a.name===pp.name)?.shareC ?? 0;
-        const tr=document.createElement("tr");
-        tr.innerHTML=`
-          <td style="font-weight:900">${escapeHtml(pp.name)}</td>
-          <td class="right">
-            <input type="number" min="0" step="1"
-              value="${Math.max(0, Math.floor(Number(pp.days)||0))}"
-              class="bill-days-input" />
-            <div class="bill-suggest">建议：${billDays}</div>
-          </td>
-          <td class="right mono">$${centsToMoney(shareC)}</td>
-        `;
-        const inp=tr.querySelector("input");
-        inp.addEventListener("input", ()=>{
-          pp.days = Math.max(0, Math.floor(Number(inp.value)||0));
-          touchAndRender();
-        });
-        tb.appendChild(tr);
-      });
-
-      box.appendChild(card);
+      tb.appendChild(tr);
     });
-  }
+
+    box.appendChild(card);
+  });
+}
+  
 
   function renderSummary(){
     const { owed, paid, net } = computeTotals();
@@ -3625,6 +3722,7 @@ window.renderInvoicePager = renderInvoicePager;
 </script>
 </body>
 </html>
+
 
 
 
