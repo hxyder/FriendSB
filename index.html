@@ -2251,6 +2251,7 @@ function loadDraftToBillForm(d){
   recalcBillTotalFromTip();
 
   showBillDraftBarIfNeeded();
+  renderAll();
 }
 
 function openBillDraftAt(i){
@@ -2452,7 +2453,8 @@ function removeCurrentBillDraft(){
     
     $("billTitle").value=""; $("billAmount").value="";
     touchAndRender("已创建账单");
-    
+    renderAll();
+    setActiveTab("bills");
     // ✅ 新增：如果这单来自发票队列，标记为已加入，并自动切下一张
     afterBillCreatedFromInvoice();
     
@@ -3329,6 +3331,7 @@ window.renderInvoicePager = renderInvoicePager;
 </script>
 </body>
 </html>
+
 
 
 
