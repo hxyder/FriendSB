@@ -2420,7 +2420,8 @@ function removeCurrentBillDraft(){
       tipPercent: isFinite(tipPercent) ? tipPercent : 0,
       baseSubtotal: isFinite(baseSubtotal) ? Math.max(0, baseSubtotal) : null
     });
-
+    touchAndRender();        // 或 touchAndRender("已创建账单");
+    setActiveTab("bills");
     // ✅ 如果当前是在“发票草稿队列模式”，创建后自动进入下一张
     if(editingFromBillDraft && billDrafts.length>0){
       // 先把表单回写到草稿（确保你改的内容被用到）
@@ -3331,6 +3332,7 @@ window.renderInvoicePager = renderInvoicePager;
 </script>
 </body>
 </html>
+
 
 
 
