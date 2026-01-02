@@ -336,18 +336,20 @@
   }
 
   /* ===== Bill collapse + prettier table ===== */
-  .bill-topline{
-    display:flex;
-    justify-content:space-between;
-    gap:10px;
-    flex-wrap:wrap;
-    align-items:flex-start;
-  }
-  .bill-actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
-  .bill-toggle{
-    padding:8px 10px;
-    border-radius:999px;
-  }
+
+.bill-topline{
+  display:block;       
+}
+
+
+.bill-actions-bottom{
+  margin-top:10px;      
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;      
+  justify-content:flex-start;
+  align-items:center;
+}
   .bill-body{ margin-top:10px; display:none; }
   .bill-body.open{ display:block; }
 
@@ -2842,14 +2844,14 @@ function syncFilterUI(){
               </div>
             </div>
           </div>
-      
+      </div>
           <div class="bill-actions">
             <button class="secondary ghost bill-toggle" data-act="toggle">${isOpen ? "收起" : "展开"}</button>
             <button class="secondary ghost" data-act="edit">编辑</button>
             <button class="secondary ghost" data-act="dup">复制</button>
             <button class="danger" data-act="del">删除</button>
           </div>
-        </div>
+        
       
         <div class="bill-body ${isOpen ? "open" : ""}" data-role="body">
           <div class="hr"></div>
@@ -3332,6 +3334,7 @@ window.renderInvoicePager = renderInvoicePager;
 </script>
 </body>
 </html>
+
 
 
 
