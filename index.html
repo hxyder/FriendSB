@@ -589,6 +589,20 @@ window.debugInvoices = () => console.log('Invoice drafts:', invoiceDrafts);
       <button class="ghost" onclick="closeModal('person')">关闭</button>
     </div>
     <div class="modalBody">
+    <!-- ✅ 新增：账单草稿队列分页条（默认隐藏） -->
+      <div id="billDraftBar" style="display:none; margin-bottom:10px">
+        <div class="card" style="box-shadow:none;border-radius:16px;border:1px solid var(--line);background:rgba(255,255,255,.75)">
+          <div class="row" style="justify-content:space-between; align-items:center">
+            <div style="font-weight:950">来自发票：<span id="billDraftPos">1/1</span></div>
+            <div class="row" style="gap:8px">
+              <button class="secondary" id="btnBillDraftPrev" type="button">上一张</button>
+              <button class="secondary" id="btnBillDraftNext" type="button">下一张</button>
+              <button class="danger ghost" id="btnBillDraftRemove" type="button">移除草稿</button>
+            </div>
+          </div>
+          <div class="hint" style="margin-top:8px">提示：每张发票“应用到账单”后会生成一个草稿，你可以分页编辑并逐个创建。</div>
+        </div>
+      </div>      
       <label>姓名</label>
       <input id="personName" placeholder="例如：A / B / C" />
       <div class="row" style="margin-top:12px">
@@ -1509,12 +1523,14 @@ function saveLocal(){
     if(which==="bill"){
       if(state.people.length===0){ toast("先添加至少 1 个人"); openModal("person"); return; }
       editingBillId = null; // ✅ 默认进入创建模式
+      editingFromBillDraft = false;
       seedBillForm();
       // 标题/按钮文字
       document.querySelector("#modalBill .modalTitle").textContent = "添加账单";
       $("billSaveBtn").textContent = "创建";
       $("modalBill").style.display="flex";
     }
+    showBillDraftBarIfNeeded();
     if(which==="invoice"){
       document.getElementById("modalInvoice").style.display="flex";
       renderInvoicePager();
@@ -1607,7 +1623,11 @@ window.openAiEntry = openAiEntry;
   // ================== 发票扫描：多张队列（OCR本地 + AI结构化） ==================
   let invoiceDrafts = []; 
   // item: { id, file, name, previewUrl, status, ocrText, parsed, err, applied, added }
-  
+  // ===== 账单草稿队列：用于“多张发票 -> 多个账单草稿 -> 分页编辑创建” =====
+  let billDrafts = [];      // [{id, fromInvoiceId, title, amount, start, end, payer, participantNames, subtotal, tipPercent, baseSubtotal}]
+  let billDraftIndex = 0;   // 当前编辑第几个草稿
+  let editingFromBillDraft = false; // 当前 modalBill 是否在编辑草稿队列
+
   let currentAppliedInvoiceId = null;
   let invoicePage = 0; // 当前翻到第几张  
   // 入口：点击“扫描发票”
@@ -2063,39 +2083,218 @@ function removeInvoice(id) {
 }
 
   
-  function applyInvoiceToBillForm(draftId){
-    const item = invoiceDrafts.find(x=>x.id===draftId);
-    if(!item){ toast("找不到该草稿"); return; }
-  
-    currentAppliedInvoiceId = draftId;
-    invoiceDrafts.forEach(x=>x.applied=false);
-    item.applied = true;
-  
-    const p = item.parsed || {};
-    const title = (p.suggest_title || p.merchant || "发票").trim();
-    const date = (p.invoice_date || "").trim();
-    const total = Number(p.total ?? 0);
-  
-    // 填充到“添加账单”表单（用户可继续编辑）
-    const titleEl = document.getElementById("billTitle");
-    const amountEl = document.getElementById("billAmount");
-    const startEl = document.getElementById("billStart");
-    const endEl = document.getElementById("billEnd");
-  
-    if(titleEl && title) titleEl.value = title;
-    if(amountEl && isFinite(total) && total >= 0) amountEl.value = String(total);
-  
-    if(startEl && date) startEl.value = date;
-    if(endEl && date) endEl.value = date;
-  
-    // 触发天数刷新
-    startEl?.dispatchEvent(new Event("change"));
-    endEl?.dispatchEvent(new Event("change"));
-  
-    toast("已应用到表单（可继续编辑后点创建）");
-    renderInvoicePager();
+function applyInvoiceToBillForm(draftId){
+  const item = invoiceDrafts.find(x=>x.id===draftId);
+  if(!item){ toast("找不到该草稿"); return; }
+
+  // 标记当前应用（发票侧视觉）
+  currentAppliedInvoiceId = draftId;
+  invoiceDrafts.forEach(x=>x.applied=false);
+  item.applied = true;
+
+  // ✅ 如果已存在对应草稿，就直接跳到那一页
+  const existIdx = billDrafts.findIndex(d=>d.fromInvoiceId===draftId);
+  if(existIdx >= 0){
+    toast("该发票已生成账单草稿，已跳转");
+    openBillDraftAt(existIdx);
+    return;
   }
 
+  // ✅ 新建一个账单草稿，加入队列
+  const d = invoiceToBillDraft(item);
+  billDrafts.push(d);
+  toast(`已加入账单草稿队列（${billDrafts.length}）`);
+
+  // 打开账单弹窗，并跳到新增的那一页
+  openBillDraftAt(billDrafts.length - 1);
+
+  // 发票弹窗也刷新（可选）
+  renderInvoicePager();
+}
+
+
+function invoiceToBillDraft(invoiceItem){
+  const p = invoiceItem?.parsed || {};
+  const title = (p.suggest_title || p.merchant || "发票").trim();
+  const date = (p.invoice_date || "").trim();
+  const total = Number(p.total ?? 0);
+
+  return {
+    id: uid(),
+    fromInvoiceId: invoiceItem.id,
+    title,
+    amount: isFinite(total) && total >= 0 ? total : 0,
+    start: date || (new Date().toISOString().split("T")[0]),
+    end: date || (new Date().toISOString().split("T")[0]),
+    payer: state.people[0] || "",
+    participantNames: [...state.people], // 默认全员参与（你可以改成勾选逻辑）
+    subtotal: null,
+    tipPercent: 0,
+    baseSubtotal: isFinite(total) && total >= 0 ? total : 0, // 默认把“总额”当作基准，避免为0
+  };
+}
+
+function showBillDraftBarIfNeeded(){
+  const bar = document.getElementById("billDraftBar");
+  if(!bar) return;
+
+  const on = editingFromBillDraft && billDrafts.length > 0;
+  bar.style.display = on ? "block" : "none";
+  if(!on) return;
+
+  const pos = document.getElementById("billDraftPos");
+  if(pos) pos.textContent = `${billDraftIndex+1}/${billDrafts.length}`;
+
+  const prevBtn = document.getElementById("btnBillDraftPrev");
+  const nextBtn = document.getElementById("btnBillDraftNext");
+  const rmBtn   = document.getElementById("btnBillDraftRemove");
+
+  if(prevBtn) prevBtn.disabled = (billDraftIndex<=0);
+  if(nextBtn) nextBtn.disabled = (billDraftIndex>=billDrafts.length-1);
+
+  if(prevBtn && !prevBtn.dataset.bound){
+    prevBtn.dataset.bound="1";
+    prevBtn.addEventListener("click", ()=> switchBillDraft(-1));
+  }
+  if(nextBtn && !nextBtn.dataset.bound){
+    nextBtn.dataset.bound="1";
+    nextBtn.addEventListener("click", ()=> switchBillDraft(+1));
+  }
+  if(rmBtn && !rmBtn.dataset.bound){
+    rmBtn.dataset.bound="1";
+    rmBtn.addEventListener("click", ()=> removeCurrentBillDraft());
+  }
+}
+
+function captureBillFormToDraft(d){
+  if(!d) return;
+  d.title = document.getElementById("billTitle")?.value?.trim() || d.title;
+  d.amount = Number(document.getElementById("billAmount")?.value) || 0;
+  d.start = document.getElementById("billStart")?.value || d.start;
+  d.end = document.getElementById("billEnd")?.value || d.end;
+  d.payer = document.getElementById("billPayer")?.value || d.payer;
+
+  const subEl = document.getElementById("billSubtotal");
+  d.subtotal = (subEl && subEl.value !== "" && isFinite(Number(subEl.value))) ? Math.max(0, Number(subEl.value)) : null;
+
+  d.tipPercent = getTipPercentFromUI();
+  // 基准小计：优先取 dataset.baseSubtotal，否则 fallback 到 subtotal/amount
+  const amtEl = document.getElementById("billAmount");
+  const ds = Number(amtEl?.dataset?.baseSubtotal);
+  if(isFinite(ds)) d.baseSubtotal = Math.max(0, ds);
+  else if(d.subtotal!=null) d.baseSubtotal = Math.max(0, Number(d.subtotal));
+  else d.baseSubtotal = Math.max(0, Number(d.amount)||0);
+
+  // 参与人勾选
+  const checks = document.getElementById("billParticipantsChecks");
+  if(checks){
+    const selected = [...checks.querySelectorAll('input[type=checkbox]:checked')].map(x=>x.value);
+    if(selected.length) d.participantNames = selected;
+  }
+}
+
+function loadDraftToBillForm(d){
+  if(!d) return;
+
+  seedBillForm(); // 先生成表单结构（payer选项、checkbox等）
+
+  document.getElementById("billTitle").value = d.title || "";
+  document.getElementById("billAmount").value = (Number(d.amount)||0).toFixed(2);
+  document.getElementById("billStart").value = d.start || "";
+  document.getElementById("billEnd").value = d.end || "";
+  document.getElementById("billPayer").value = d.payer || (state.people[0]||"");
+
+  // subtotal/tip 回填
+  const subEl = document.getElementById("billSubtotal");
+  if(subEl) subEl.value = (d.subtotal!=null && isFinite(Number(d.subtotal))) ? Number(d.subtotal).toFixed(2) : "";
+
+  const tp = isFinite(Number(d.tipPercent)) ? Number(d.tipPercent) : 0;
+  const presets = new Set([0,18,20,25]);
+  const otherEl = document.getElementById("billTipOther");
+  const rOther = document.querySelector('input[name="tipPreset"][value="other"]');
+  if(presets.has(tp)){
+    const r = document.querySelector(`input[name="tipPreset"][value="${tp}"]`);
+    if(r) r.checked = true;
+    if(otherEl){ otherEl.value=""; otherEl.disabled=true; }
+  }else{
+    if(rOther) rOther.checked = true;
+    if(otherEl){
+      otherEl.disabled = false;
+      otherEl.value = String(clamp(tp,0,25));
+    }
+  }
+
+  // ✅ 恢复 baseSubtotal
+  const amtEl = document.getElementById("billAmount");
+  if(amtEl){
+    const bs = (d.baseSubtotal!=null && isFinite(Number(d.baseSubtotal))) ? Number(d.baseSubtotal)
+            : (d.subtotal!=null && isFinite(Number(d.subtotal))) ? Number(d.subtotal)
+            : (isFinite(Number(d.amount)) ? Number(d.amount) : 0);
+    amtEl.dataset.baseSubtotal = String(Math.max(0, bs));
+  }
+
+  // 参与人勾选回填
+  const selected = new Set(d.participantNames || []);
+  [...document.getElementById("billParticipantsChecks").querySelectorAll('input[type=checkbox]')].forEach(chk=>{
+    chk.checked = selected.has(chk.value);
+  });
+
+  // 刷新天数
+  document.getElementById("billStart").dispatchEvent(new Event("change"));
+  document.getElementById("billEnd").dispatchEvent(new Event("change"));
+
+  // 标题按钮
+  document.querySelector("#modalBill .modalTitle").textContent = "添加账单（发票草稿）";
+  document.getElementById("billSaveBtn").textContent = "创建并下一张";
+
+  // 计算一次总额（如果你填了subtotal/tip）
+  recalcBillTotalFromTip();
+
+  showBillDraftBarIfNeeded();
+}
+
+function openBillDraftAt(i){
+  billDraftIndex = Math.max(0, Math.min(i, billDrafts.length-1));
+  editingFromBillDraft = true;
+  editingBillId = null; // 确保不是“编辑账单模式”
+
+  // 打开modalBill并加载草稿
+  document.getElementById("modalBill").style.display = "flex";
+  loadDraftToBillForm(billDrafts[billDraftIndex]);
+}
+
+function switchBillDraft(delta){
+  if(billDrafts.length===0) return;
+
+  // 先保存当前表单到当前草稿
+  captureBillFormToDraft(billDrafts[billDraftIndex]);
+
+  const next = billDraftIndex + delta;
+  if(next < 0 || next >= billDrafts.length) return;
+  openBillDraftAt(next);
+}
+
+function removeCurrentBillDraft(){
+  if(billDrafts.length===0) return;
+
+  const removed = billDrafts.splice(billDraftIndex, 1);
+  // 同步发票状态（可选）
+  const invId = removed?.[0]?.fromInvoiceId;
+  if(invId){
+    const inv = invoiceDrafts.find(x=>x.id===invId);
+    if(inv) inv.applied = false;
+  }
+
+  if(billDrafts.length===0){
+    editingFromBillDraft = false;
+    document.getElementById("billDraftBar").style.display="none";
+    toast("已移除草稿（队列为空）");
+    return;
+  }
+  billDraftIndex = Math.min(billDraftIndex, billDrafts.length-1);
+  openBillDraftAt(billDraftIndex);
+  toast("已移除当前草稿");
+}  
 
   // 让创建成功后：把当前应用的发票标记为“已加入”，并自动应用下一张 ready 的
   function afterBillCreatedFromInvoice(){
@@ -2220,6 +2419,35 @@ function removeInvoice(id) {
       tipPercent: isFinite(tipPercent) ? tipPercent : 0,
       baseSubtotal: isFinite(baseSubtotal) ? Math.max(0, baseSubtotal) : null
     });
+
+    // ✅ 如果当前是在“发票草稿队列模式”，创建后自动进入下一张
+    if(editingFromBillDraft && billDrafts.length>0){
+      // 先把表单回写到草稿（确保你改的内容被用到）
+      captureBillFormToDraft(billDrafts[billDraftIndex]);
+    
+      // 标记发票 added（沿用你原来的逻辑）
+      const invId = billDrafts[billDraftIndex].fromInvoiceId;
+      if(invId){
+        const inv = invoiceDrafts.find(x=>x.id===invId);
+        if(inv){ inv.added = true; inv.applied = false; }
+      }
+    
+      // 移除已创建的草稿
+      billDrafts.splice(billDraftIndex, 1);
+    
+      if(billDrafts.length===0){
+        editingFromBillDraft = false;
+        closeModal("bill");
+        toast("已创建账单（草稿队列已完成）");
+        return;
+      }
+    
+      // 留在当前 index（因为当前被删了，下一张会顶上来）
+      billDraftIndex = Math.min(billDraftIndex, billDrafts.length-1);
+      openBillDraftAt(billDraftIndex);
+      toast("已创建账单（已切到下一张草稿）");
+      return;
+    }
 
     
     $("billTitle").value=""; $("billAmount").value="";
@@ -3101,6 +3329,7 @@ window.renderInvoicePager = renderInvoicePager;
 </script>
 </body>
 </html>
+
 
 
 
