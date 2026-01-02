@@ -2413,6 +2413,11 @@ function removeCurrentBillDraft(){
       closeModal("bill");
       return;
     }
+if (!b.items) {
+  b.items = [
+    { id: crypto.randomUUID?.() || String(Date.now()), name: "消费项1", cents: amountC, members: [] }
+  ];
+}
     
     // ✅ 创建模式：新建账单
     const participants = participantsSelected.map(name=>({name, days: billDays}));
@@ -2855,7 +2860,24 @@ function syncFilterUI(){
       
         <div class="bill-body ${isOpen ? "open" : ""}" data-role="body">
           <div class="hr"></div>
-      
+          
+          <div class="hr"></div>
+          
+          <div class="bill-items card" style="box-shadow:none; border-radius:16px; border:1px solid var(--line); background:rgba(255,255,255,.75)">
+            <div class="row" style="justify-content:space-between; align-items:center">
+              <h2 style="margin:0">消费项 Items（按项分摊）</h2>
+              <button class="secondary ghost" data-act="addItem">+ 添加项</button>
+            </div>
+          
+            <div class="hint" style="margin-top:6px">
+              每个消费项勾选“参与人”，该项金额将只在勾选的人之间均分。
+            </div>
+          
+            <div class="itemsList" data-role="itemsList" style="margin-top:10px; display:grid; gap:10px"></div>
+          
+            <div class="hint" data-role="itemsCheck" style="margin-top:10px"></div>
+          </div>
+                
           <table class="bill-table">
             <thead>
               <tr>
@@ -2869,6 +2891,140 @@ function syncFilterUI(){
         </div>
       `;
 
+
+    // ✅ 统一用事件委托：处理 addItem / delItem
+    card.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-act]");
+      if (!btn) return;
+    
+      const act = btn.dataset.act;
+    
+      if (act === "addItem") {
+        b.items = Array.isArray(b.items) ? b.items : [];
+        b.items.push({
+          id: crypto.randomUUID?.() || String(Date.now() + Math.random()),
+          name: `消费项${b.items.length + 1}`,
+          cents: 0,
+          members: []
+        });
+        touchAndRender("已添加消费项");
+        return;
+      }
+    
+      if (act === "delItem") {
+        const itId = btn.getAttribute("data-it");
+        b.items = (b.items || []).filter(x => x.id !== itId);
+        touchAndRender("已删除消费项");
+        return;
+      }
+    });
+
+      
+    card.addEventListener("change", (e) => {
+      const t = e.target;
+    
+      if (t.matches('input[data-role="itName"]')) {
+        const itId = t.getAttribute("data-it");
+        const it = (b.items||[]).find(x => x.id === itId);
+        if (it) it.name = t.value;
+        touchAndRender();
+        return;
+      }
+    
+      if (t.matches('input[data-role="itMoney"]')) {
+        const itId = t.getAttribute("data-it");
+        const it = (b.items||[]).find(x => x.id === itId);
+        if (it) it.cents = Math.round(Number(t.value||0) * 100);
+        touchAndRender();
+        return;
+      }
+    
+      // ✅ checkbox member（pid 是人名字符串）
+      if (t.matches('input[type="checkbox"][data-it][data-pid]')) {
+        const itId = t.getAttribute("data-it");
+        const pid = t.getAttribute("data-pid"); // 这里就是人名
+        const it = (b.items||[]).find(x => x.id === itId);
+        if (!it) return;
+    
+        it.members = Array.isArray(it.members) ? it.members : [];
+        const set = new Set(it.members);
+    
+        if (t.checked) set.add(pid);
+        else set.delete(pid);
+    
+        it.members = Array.from(set);
+        touchAndRender();
+        return;
+      }
+    });
+
+
+
+      
+      const itemsListEl = card.querySelector('[data-role="itemsList"]');
+      const itemsCheckEl = card.querySelector('[data-role="itemsCheck"]');
+      
+      function renderItems(){
+        // 兜底
+        b.items = Array.isArray(b.items) ? b.items : [];
+        if (b.items.length === 0){
+          b.items.push({ id: crypto.randomUUID?.() || String(Date.now()), name:"消费项1", cents: amountC, members: [] });
+        }
+      
+        itemsListEl.innerHTML = b.items.map((it, idx) => {
+          const checked = new Set(it.members || []);
+          const peopleChecks = state.people.map(p => {
+            const isChecked = checked.has(p) ? "checked" : "";
+            return `
+              <label class="checkItem" style="padding:8px 10px">
+                <input type="checkbox" data-it="${it.id}" data-pid="${escapeHtml(p)}" ${isChecked}/>
+                <span>${escapeHtml(p)}</span>
+              </label>
+            `;
+          }).join("");
+      
+          return `
+            <div class="card" style="box-shadow:none; border:1px solid rgba(18,22,42,.10); border-radius:14px; background:rgba(255,255,255,.92)">
+              <div class="row" style="justify-content:space-between; align-items:flex-start; gap:10px">
+                <div style="flex:1; min-width:220px">
+                  <label>名称</label>
+                  <input data-role="itName" data-it="${it.id}" value="${escapeHtml(it.name||"")}" />
+                </div>
+      
+                <div style="width:160px">
+                  <label>金额（$）</label>
+                  <input data-role="itMoney" data-it="${it.id}" type="number" step="0.01"
+                    value="${(Number(it.cents||0)/100).toFixed(2)}" />
+                </div>
+      
+                <div style="display:flex; gap:8px; margin-top:22px">
+                  <button class="secondary ghost" data-act="delItem" data-it="${it.id}">删除</button>
+                </div>
+              </div>
+      
+              <div style="margin-top:10px">
+                <label>参与人（勾选后该项均分）</label>
+                <div class="checkList" style="margin-top:8px">
+                  ${peopleChecks}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      
+        // 校验 items 总额 vs 账单总额
+        const itemsSum = b.items.reduce((s, it) => s + (Number(it.cents)||0), 0);
+        const diff = itemsSum - amountC;
+        if (diff === 0){
+          itemsCheckEl.innerHTML = `✅ Items 总额与账单金额一致：<span class="mono">$${centsToMoney(itemsSum)}</span>`;
+        }else{
+          itemsCheckEl.innerHTML =
+            `❌ Items 总额：<span class="mono">$${centsToMoney(itemsSum)}</span>，账单金额：<span class="mono">$${centsToMoney(amountC)}</span>，
+            差额：<span class="mono">${diff>0?"+":""}$${centsToMoney(diff)}</span>（请调整各项金额）`;
+        }
+      }
+      
+      renderItems();
 
       const payerSel=card.querySelector('[data-role="payer"]');
       payerSel.value=b.payer || state.people[0] || "";
@@ -3334,6 +3490,7 @@ window.renderInvoicePager = renderInvoicePager;
 </script>
 </body>
 </html>
+
 
 
 
