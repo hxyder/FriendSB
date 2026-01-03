@@ -3471,109 +3471,111 @@ function importJSONFromBox(){
     return msg;
   }
 
-  async function connectRoom(room, pass){
-      const rememberPass = (opts.rememberPass !== false); // 默认 true
-      const quiet = !!opts.quiet; // 可选：自动重连时不 toast
-      try{
-          if(!room){ if(!quiet) toast("room 不能为空"); return false; }
-          if(!isSixDigits(pass)){ if(!quiet) toast("口令必须是 6 位数字"); return false; }
+async function connectRoom(room, pass, opts = {}){
+  const rememberPass = (opts.rememberPass !== false); // 默认 true
+  const quiet = !!opts.quiet; // 自动重连时不 toast
 
-      await ensureFirebase();
-      await ensureAuth();
+  try{
+    if(!room){ if(!quiet) toast("room 不能为空"); return false; }
+    if(!isSixDigits(pass)){ if(!quiet) toast("口令必须是 6 位数字"); return false; }
 
-      roomId = room;
-      passcode = pass;
-      passHash = await sha256Hex(passcode);
+    await ensureFirebase();
+    await ensureAuth();
 
-      setRoomToUrl(roomId);
-      refreshCollabUI();
-      setSyncBadge(`连接中：room=${roomId}`);
+    roomId = room;
+    passcode = pass;
+    passHash = await sha256Hex(passcode);
 
-       if(rememberPass) storePass(roomId, passcode);
+    setRoomToUrl(roomId);
+    refreshCollabUI();
+    setSyncBadge(`连接中：room=${roomId}`);
 
-      if(unsubRoom) unsubRoom();
+    if(rememberPass) storePass(roomId, passcode);
 
-      const roomRef = doc(db, "rooms", roomId);
-      const snap = await getDoc(roomRef);
+    if(unsubRoom) unsubRoom();
 
-      if(snap.exists()){
-        const data = snap.data();
-        if(String(data.passHash||"") !== passHash){
-          setSyncBadge("口令错误：无法加入");
-          toast("口令错误：无法加入该房间");
-          roomId=""; passcode=""; passHash="";
-          refreshCollabUI();
-          return false;
-        }
+    const roomRef = doc(db, "rooms", roomId);
+    const snap = await getDoc(roomRef);
 
-        try{
-          if(data.cipher && data.iv){
-            const remoteState = await decryptState(data.cipher, data.iv, passcode, roomId);
-            state = remoteState;
-            saveLocal(roomId);
-            renderAll();
-          }
-        }catch(e){
-          setSyncBadge("解密失败：口令不对或数据损坏");
-          toast("解密失败：口令不对或数据损坏");
-          roomId=""; passcode=""; passHash="";
-          refreshCollabUI();
-          return false;
-        }
-      }else{
-        // 新房间：用本地 state 初始化
-        const enc = await encryptState(state, passcode, roomId);
-        await setDoc(roomRef, {
-          passHash,
-          cipher: enc.cipher,
-          iv: enc.iv,
-          version: localVersion,
-          updatedAt: serverTimestamp(),
-          updatedBy: clientId,
-        }, { merge:false });
+    if(snap.exists()){
+      const data = snap.data();
+      if(String(data.passHash||"") !== passHash){
+        setSyncBadge("口令错误：无法加入");
+        if(!quiet) toast("口令错误：无法加入该房间");
+        roomId=""; passcode=""; passHash="";
+        refreshCollabUI();
+        return false;
       }
 
-      // 监听远端变更
-      unsubRoom = onSnapshot(roomRef, async (s)=>{
-        const data = s.data();
-        if(!data) return;
-        if(String(data.passHash||"") !== passHash) return;
-
-        const v = Number(data.version || 0);
-        const by = String(data.updatedBy || "");
-        if(!data.cipher || !data.iv) return;
-
-        if(by === clientId){
-          lastRemoteVersion = Math.max(lastRemoteVersion, v);
-          return;
+      try{
+        if(data.cipher && data.iv){
+          const remoteState = await decryptState(data.cipher, data.iv, passcode, roomId);
+          state = remoteState;
+          saveLocal(roomId);
+          renderAll();
         }
-
-        if(v > lastRemoteVersion && v >= localVersion){
-          try{
-            const remoteState = await decryptState(data.cipher, data.iv, passcode, roomId);
-            lastRemoteVersion = v;
-            localVersion = v;
-            state = remoteState;
-            saveLocal(roomId);
-            renderAll();
-            setSyncBadge(`已同步：room=${roomId}`);
-          }catch(e){
-            setSyncBadge("同步到的内容无法解密（口令不匹配？）");
-          }
-        }
-      });
-
-      setSyncBadge(`已同步：room=${roomId}`);
-      return true;
-
-    }catch(e){
-      const m = friendlyErr(e);
-      setSyncBadge("连接失败：" + m);
-      toast("连接失败：" + m);
-      console.error(e);
-      return false;
+      }catch(e){
+        setSyncBadge("解密失败：口令不对或数据损坏");
+        if(!quiet) toast("解密失败：口令不对或数据损坏");
+        roomId=""; passcode=""; passHash="";
+        refreshCollabUI();
+        return false;
+      }
+    }else{
+      // 新房间：用当前 state 初始化（创建房间时我们会先把 state 清空）
+      const enc = await encryptState(state, passcode, roomId);
+      await setDoc(roomRef, {
+        passHash,
+        cipher: enc.cipher,
+        iv: enc.iv,
+        version: localVersion,
+        updatedAt: serverTimestamp(),
+        updatedBy: clientId,
+      }, { merge:false });
     }
+
+    // 监听远端变更
+    unsubRoom = onSnapshot(roomRef, async (s)=>{
+      const data = s.data();
+      if(!data) return;
+      if(String(data.passHash||"") !== passHash) return;
+
+      const v = Number(data.version || 0);
+      const by = String(data.updatedBy || "");
+      if(!data.cipher || !data.iv) return;
+
+      if(by === clientId){
+        lastRemoteVersion = Math.max(lastRemoteVersion, v);
+        return;
+      }
+
+      if(v > lastRemoteVersion && v >= localVersion){
+        try{
+          const remoteState = await decryptState(data.cipher, data.iv, passcode, roomId);
+          lastRemoteVersion = v;
+          localVersion = v;
+          state = remoteState;
+          saveLocal(roomId);
+          renderAll();
+          setSyncBadge(`已同步：room=${roomId}`);
+        }catch(e){
+          setSyncBadge("同步到的内容无法解密（口令不匹配？）");
+        }
+      }
+    });
+
+    setSyncBadge(`已同步：room=${roomId}`);
+    return true;
+
+  }catch(e){
+    const m = friendlyErr(e);
+    setSyncBadge("连接失败：" + m);
+    if(!opts.quiet) toast("连接失败：" + m);
+    console.error(e);
+    return false;
   }
+}
+
 
   function schedulePush(){
     if(!roomId || !db || !passcode) return;
@@ -3701,53 +3703,52 @@ window.nextInvoice = nextInvoice;
 window.renderInvoicePager = renderInvoicePager;
 
 // ========= 初始化 =========
-state = { people: [], bills: [] };
-renderAll();
-bindInvoiceInputOnce();
-setActiveTab(activeTab);
+(function init(){
+  const urlRoom = getRoomFromUrl();
 
-document.getElementById("btnBillsCompact")?.addEventListener("click", ()=>{
-  billsCompact = true;
-  persistBillsCompact();
-  toast("已折叠为列表视图");
-  renderAll();
-});
-document.getElementById("btnBillsExpand")?.addEventListener("click", ()=>{
-  billsCompact = false;
-  persistBillsCompact();
-  toast("已展开为卡片视图");
-  renderAll();
-});
-
-// URL 带 room：打开协作窗口 + 尝试自动重连
-const urlRoom = getRoomFromUrl();
-if(urlRoom){
-  setSyncBadge("检测到房间号：正在尝试重连…（若失败请手动输入口令）");
-  setTimeout(()=> openModal("share"), 250);
-
-  const sp = getStoredPass(urlRoom);
-  if(sp && isSixDigits(sp)){
-    // ✅ 自动重连：quiet=true 不弹“已自动重连成功”
-    setTimeout(async ()=>{
-      const ok = await connectRoom(urlRoom, sp, { rememberPass: true, quiet: true });
-      if(!ok){
-        setSyncBadge("需要口令：请输入 6 位口令加入");
-      }
-    }, 300);
-  }else{
-    setSyncBadge("需要口令：请输入 6 位口令加入");
+  if(!urlRoom){
+    // ✅ 没有 room：必须是空白页，不加载历史
+    roomId = "";
+    passcode = "";
+    passHash = "";
+    state = emptyState();   // 你文件里有 emptyState()
+    localVersion = 0;
+    lastRemoteVersion = 0;
+    renderAll();
+    refreshCollabUI();
+    setSyncBadge("离线：未进入房间（无数据）");
+    return;
   }
-}else{
-  setSyncBadge("未进入房间：数据为空（点“协作/分享”创建或加入）");
-}
 
-refreshCollabUI();
-refreshAiTokenStatus();
+  // ✅ 有 room：优先尝试自动重连（本机保存过口令才行）
+  const saved = getStoredPass(urlRoom);
+  if(saved && isSixDigits(saved)){
+    setSyncBadge("检测到房间号：自动重连中…");
+    // quiet=true：自动重连失败不要一堆 toast，失败后再弹窗让用户输
+    connectRoom(urlRoom, saved, { quiet:true, rememberPass:true }).then(ok=>{
+      if(!ok){
+        setSyncBadge("检测到房间号：请输入口令加入");
+        openModal("share");
+      }
+    });
+  }else{
+    setSyncBadge("检测到房间号：请输入口令加入");
+    openModal("share");
+  }
+
+  // 无论如何先渲染空壳 UI
+  state = emptyState();
+  renderAll();
+  bindInvoiceInputOnce();
+  setActiveTab(activeTab);
+})();
+
 
 
 </script>
 </body>
 </html>
+
 
 
 
