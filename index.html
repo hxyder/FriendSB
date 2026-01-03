@@ -1492,45 +1492,56 @@ if(amtEl && !amtEl.dataset.baseBound){
     return JSON.parse(json);
   }
 
-  // ========= 本地状态 =========
-const STORAGE_KEY = "aa_split_state_secure_v1";
+// ========= 本地状态（按 room 隔离） =========
+const STORAGE_KEY_BASE = "aa_split_state_secure_v1";
 const PASS_STORE_KEY = "aa_room_pass_secure_v1";
+
 let editingBillId = null;
 
-// 确保state有正确的结构
-let state = { 
-    people: [], 
-    bills: [],
-    // 如果有其他字段也在这里添加
-};
-
-function loadLocal(){
-    try{
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if(raw){
-            const obj = JSON.parse(raw);
-            if(obj && Array.isArray(obj.people) && Array.isArray(obj.bills)) {
-                state = obj;
-            } else {
-                // 如果结构不对，使用默认结构
-                state = { people: [], bills: [] };
-            }
-        } else {
-            state = { people: [], bills: [] };
-        }
-    }catch(e){
-        console.error('加载本地数据失败:', e);
-        state = { people: [], bills: [] };
-    }
+// 统一空白 state
+function emptyState(){
+  return { people: [], bills: [] };
 }
 
-function saveLocal(){
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch(e) {
-        console.error('保存本地数据失败:', e);
-    }
+// 每个 room 一个 localStorage key；没进房间则用 no_room
+function storageKeyForRoom(rid){
+  return rid ? `${STORAGE_KEY_BASE}::room::${rid}` : `${STORAGE_KEY_BASE}::no_room`;
 }
+
+function loadLocal(rid){
+  // ✅ 没有 room：直接空白（不加载任何旧数据）
+  if(!rid) { state = emptyState(); return; }
+
+  try{
+    const raw = localStorage.getItem(storageKeyForRoom(rid));
+    if(raw){
+      const obj = JSON.parse(raw);
+      if(obj && Array.isArray(obj.people) && Array.isArray(obj.bills)) {
+        state = obj;
+        return;
+      }
+    }
+    state = emptyState();
+  }catch(e){
+    console.error("加载本地数据失败:", e);
+    state = emptyState();
+  }
+}
+
+function saveLocal(rid){
+  // ✅ 没有 room：不保存（避免无房间时也写入脏数据）
+  if(!rid) return;
+
+  try{
+    localStorage.setItem(storageKeyForRoom(rid), JSON.stringify(state));
+  }catch(e){
+    console.error("保存本地数据失败:", e);
+  }
+}
+
+// 当前运行态 state（必须在 loadLocal 前先声明）
+let state = emptyState();
+
   function storePass(roomId, pass){
     try{
       const raw = localStorage.getItem(PASS_STORE_KEY);
@@ -1581,8 +1592,6 @@ function saveLocal(){
       const urlRoom = getRoomFromUrl();
       if(urlRoom){
         $("joinRoomInput").value = urlRoom;
-        const sp = getStoredPass(urlRoom);
-        if(sp) $("joinPassInput").value = sp;
         setTimeout(()=> $("joinPassInput").focus(), 0);
       }
       $("modalShare").style.display="flex";
@@ -3463,9 +3472,11 @@ function importJSONFromBox(){
   }
 
   async function connectRoom(room, pass){
-    try{
-      if(!room){ toast("room 不能为空"); return false; }
-      if(!isSixDigits(pass)){ toast("口令必须是 6 位数字"); return false; }
+      const rememberPass = (opts.rememberPass !== false); // 默认 true
+      const quiet = !!opts.quiet; // 可选：自动重连时不 toast
+      try{
+          if(!room){ if(!quiet) toast("room 不能为空"); return false; }
+          if(!isSixDigits(pass)){ if(!quiet) toast("口令必须是 6 位数字"); return false; }
 
       await ensureFirebase();
       await ensureAuth();
@@ -3478,7 +3489,7 @@ function importJSONFromBox(){
       refreshCollabUI();
       setSyncBadge(`连接中：room=${roomId}`);
 
-      storePass(roomId, passcode);
+       if(rememberPass) storePass(roomId, passcode);
 
       if(unsubRoom) unsubRoom();
 
@@ -3499,7 +3510,7 @@ function importJSONFromBox(){
           if(data.cipher && data.iv){
             const remoteState = await decryptState(data.cipher, data.iv, passcode, roomId);
             state = remoteState;
-            saveLocal();
+            saveLocal(roomId);
             renderAll();
           }
         }catch(e){
@@ -3543,7 +3554,7 @@ function importJSONFromBox(){
             lastRemoteVersion = v;
             localVersion = v;
             state = remoteState;
-            saveLocal();
+            saveLocal(roomId);
             renderAll();
             setSyncBadge(`已同步：room=${roomId}`);
           }catch(e){
@@ -3601,7 +3612,7 @@ function importJSONFromBox(){
 
   function touchAndRender(msg){
     localVersion += 1;
-    saveLocal();
+    saveLocal(roomId);
     renderAll();
     if(msg) toast(msg);
     schedulePush();
@@ -3610,14 +3621,25 @@ function importJSONFromBox(){
   async function createNewRoom(){
     const pass = $("createPassInput").value.trim();
     if(!isSixDigits(pass)){ toast("请在“新房间口令”里输入 6 位数字"); return; }
+  
+    // ✅ 新房间从空白开始（避免继承旧房间数据）
+    state = { people: [], bills: [] };
+    localVersion = 0;
+    lastRemoteVersion = 0;
+  
     const rid = roomIdRandom();
-    const ok = await connectRoom(rid, pass);
+  
+    // ✅ 创建房间：不记住口令（下次打开需再输入）
+    const ok = await connectRoom(rid, pass, { rememberPass: false });
+  
     if(ok){
       refreshCollabUI();
       toast("创建成功（已进入房间）");
       closeModal("share");
     }
   }
+
+
 
   async function joinRoom(){
     const rid = $("joinRoomInput").value.trim();
@@ -3678,50 +3700,55 @@ window.prevInvoice = prevInvoice;
 window.nextInvoice = nextInvoice;
 window.renderInvoicePager = renderInvoicePager;
 
-  // ========= 初始化 =========
-  loadLocal();
+// ========= 初始化 =========
+state = { people: [], bills: [] };
+renderAll();
+bindInvoiceInputOnce();
+setActiveTab(activeTab);
+
+document.getElementById("btnBillsCompact")?.addEventListener("click", ()=>{
+  billsCompact = true;
+  persistBillsCompact();
+  toast("已折叠为列表视图");
   renderAll();
-  bindInvoiceInputOnce();
-  setActiveTab(activeTab);
-  document.getElementById("btnBillsCompact")?.addEventListener("click", ()=>{
-    billsCompact = true;
-    persistBillsCompact();
-    toast("已折叠为列表视图");
-    renderAll();
-  });
-  
-  document.getElementById("btnBillsExpand")?.addEventListener("click", ()=>{
-    billsCompact = false;
-    persistBillsCompact();
-    toast("已展开为卡片视图");
-    renderAll();
-  });
+});
+document.getElementById("btnBillsExpand")?.addEventListener("click", ()=>{
+  billsCompact = false;
+  persistBillsCompact();
+  toast("已展开为卡片视图");
+  renderAll();
+});
 
-  // URL 带 room：自动打开分享弹窗并填好 room
-  const urlRoom = getRoomFromUrl();
-  if(urlRoom){
-    setSyncBadge("检测到房间号：请输入口令加入");
-    // 自动弹出协作窗口，直接让用户输口令
-    setTimeout(()=> openModal("share"), 250);
+// URL 带 room：打开协作窗口 + 尝试自动重连
+const urlRoom = getRoomFromUrl();
+if(urlRoom){
+  setSyncBadge("检测到房间号：正在尝试重连…（若失败请手动输入口令）");
+  setTimeout(()=> openModal("share"), 250);
 
-    // 如果本机记住口令，尝试自动加入（同一设备）
-    const sp = getStoredPass(urlRoom);
-    if(sp && isSixDigits(sp)){
-      setTimeout(async ()=>{
-        const ok = await connectRoom(urlRoom, sp);
-        if(ok){ toast("已自动重连成功"); }
-      }, 600);
-    }
+  const sp = getStoredPass(urlRoom);
+  if(sp && isSixDigits(sp)){
+    // ✅ 自动重连：quiet=true 不弹“已自动重连成功”
+    setTimeout(async ()=>{
+      const ok = await connectRoom(urlRoom, sp, { rememberPass: true, quiet: true });
+      if(!ok){
+        setSyncBadge("需要口令：请输入 6 位口令加入");
+      }
+    }, 300);
   }else{
-    setSyncBadge("离线：仅本机保存（点“协作/分享”创建/加入）");
+    setSyncBadge("需要口令：请输入 6 位口令加入");
   }
+}else{
+  setSyncBadge("未进入房间：数据为空（点“协作/分享”创建或加入）");
+}
 
-  refreshCollabUI();
-  refreshAiTokenStatus();
+refreshCollabUI();
+refreshAiTokenStatus();
+
 
 </script>
 </body>
 </html>
+
 
 
 
