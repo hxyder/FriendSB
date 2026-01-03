@@ -3533,7 +3533,8 @@ async function connectRoom(room, pass, opts = {}){
         updatedBy: clientId,
       }, { merge:false });
     }
-
+    saveLocal(roomId);
+    renderAll();
     // 监听远端变更
     unsubRoom = onSnapshot(roomRef, async (s)=>{
       const data = s.data();
@@ -3620,26 +3621,31 @@ async function connectRoom(room, pass, opts = {}){
     schedulePush();
   }
 
-  async function createNewRoom(){
-    const pass = $("createPassInput").value.trim();
-    if(!isSixDigits(pass)){ toast("请在“新房间口令”里输入 6 位数字"); return; }
-  
-    // ✅ 新房间从空白开始（避免继承旧房间数据）
-    state = { people: [], bills: [] };
-    localVersion = 0;
-    lastRemoteVersion = 0;
-  
-    const rid = roomIdRandom();
-  
-    // ✅ 创建房间：不记住口令（下次打开需再输入）
-    const ok = await connectRoom(rid, pass, { rememberPass: false });
-  
-    if(ok){
-      refreshCollabUI();
-      toast("创建成功（已进入房间）");
-      closeModal("share");
-    }
+async function createNewRoom(){
+  const pass = $("createPassInput").value.trim();
+  if(!isSixDigits(pass)){ toast("请在“新房间口令”里输入 6 位数字"); return; }
+
+  // ✅ 新房间从空白开始（避免继承旧房间数据）
+  state = { people: [], bills: [] };
+  localVersion = 0;
+  lastRemoteVersion = 0;
+
+  // ✅ 关键：立刻刷新界面，否则还停留在旧房间的渲染结果
+  renderAll();
+  setSyncBadge("创建新房间中…");
+
+  const rid = roomIdRandom();
+
+  // ✅ 创建房间：不记住口令（下次打开需再输入）
+  const ok = await connectRoom(rid, pass, { rememberPass: false });
+
+  if(ok){
+    refreshCollabUI();
+    toast("创建成功（已进入房间）");
+    closeModal("share");
   }
+}
+
 
 
 
@@ -3748,6 +3754,7 @@ window.renderInvoicePager = renderInvoicePager;
 </script>
 </body>
 </html>
+
 
 
 
